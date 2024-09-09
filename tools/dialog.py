@@ -9,6 +9,7 @@ from ..config import config_path, current_dir_path, load_api_keys
 class start_dialog:
     def __init__(self):
         self.start = True
+        self.start_dialog=""
         current_time = datetime.datetime.now()
         # 生成一个hash值作为id
         self.id = current_time.strftime("%Y_%m_%d_%H_%M_%S") + str(hash(random.randint(0, 1000000)))
@@ -24,7 +25,11 @@ class start_dialog:
 
     @classmethod
     def INPUT_TYPES(s):
-        return {"required": {"start_dialog": ("STRING", {})}}
+        return {"required": 
+                {"start_dialog": ("STRING", {}),
+                 "is_reload": ("BOOLEAN", {"default": False})
+                 }
+                }
 
     RETURN_TYPES = (
         "STRING",
@@ -41,7 +46,9 @@ class start_dialog:
 
     CATEGORY = "大模型派对（llm_party）/工作流（workflow）"
 
-    def dialog(self, start_dialog):
+    def dialog(self, start_dialog,is_reload):
+        if is_reload:
+            self.start = True
         if self.start == False:
             # 读取prompt.txt文件内容
             with open(self.prompt_path, "r", encoding="utf-8") as f:

@@ -1,11 +1,13 @@
 import locale
 import os
+import time
 import requests
 import torch
 import urllib3
 import ssl
 from PIL import Image, ImageOps, ImageSequence
 import numpy as np
+
 class URL2IMG:
     def __init__(self):
         self.img_path = None
@@ -48,11 +50,18 @@ class URL2IMG:
             ext = 'JPG'
         else:
             return (None, None, "Unknown image extension based on base64")
-
+        # 当前脚本目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 构建img_temp目录路径
+        img_temp_dir = os.path.join(current_dir, 'img_temp')
+        # 如果img_temp目录不存在，则创建
+        os.makedirs(img_temp_dir, exist_ok=True)
+        # 时间戳
+        timestamp = int(time.time())
         if file_name == None:
-            img_path = f'image.{ext}'
+            img_path = os.path.join(img_temp_dir,f'image-{timestamp}.{ext}')
         else:
-            img_path = f'{file_name}.{ext}'
+            img_path = os.path.join(img_temp_dir,f'{file_name}-{timestamp}.{ext}')
         with open(img_path, 'wb') as f:
             f.write(response.data)
 

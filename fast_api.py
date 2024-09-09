@@ -1,6 +1,6 @@
+import argparse
 import base64
 import configparser
-import io
 import json
 import os
 import time
@@ -8,22 +8,23 @@ import urllib.parse
 import urllib.request
 import uuid
 from io import BytesIO
-from typing import Any, List, Optional, Union
+from typing import Any, List
 
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 import numpy as np
-import openai
-import pandas as pd
 import requests
 import torch
 import websocket  # NOTE: websocket-client (https://github.com/websocket-client/websocket-client)
 from fastapi import Depends, FastAPI, HTTPException, Request
 from PIL import Image, ImageOps
-from pydantic import BaseModel, validator
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import get_lexer_by_name
+from pydantic import BaseModel
 
 current_dir_path = os.path.dirname(os.path.realpath(__file__))
+config = configparser.ConfigParser()
+config.read(os.path.join(current_dir_path, "config.ini"))
+# 获取配置文件中的参数
+fastapi_api_key = config.get("API_KEYS", "fastapi_api_key", fallback="")
 server_address = "127.0.0.1:8188"
 client_id = str(uuid.uuid4())
 
@@ -125,20 +126,6 @@ def api(
 app = FastAPI()
 
 
-# 定义请求中的消息内容
-class MessageContent(BaseModel):
-    type: str
-    text: Optional[str] = None
-    image_url: Optional[Union[str, dict]] = None
-
-    # 自定义验证器来处理image_url字段
-    @validator("image_url", pre=True)
-    def parse_image_url(cls, value):
-        if isinstance(value, dict) and "url" in value:
-            return value["url"]
-        return value
-
-
 # 定义请求中的消息
 class Message(BaseModel):
     role: str
@@ -152,25 +139,60 @@ class CompletionRequest(BaseModel):
     max_tokens: int = 150  # 添加了默认值
 
 
-# 中间件或依赖项来验证 API 密钥
-async def verify_api_key(request: Request):
-    # 从请求头中获取 API 密钥
-    api_key = request.headers.get("Authorization").split("Bearer ")[-1]
-    # 这里应该有验证api_key的逻辑
+VALID_API_KEY = fastapi_api_key
 
+# 使用 FastAPI 的 HTTPBearer 进行认证
+security = HTTPBearer()
+
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if VALID_API_KEY == "":
+        return  # 如果 fastapi_api_key 为空字符串，就不校验
+    if credentials.credentials != VALID_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+
+# 获取模型名称的端点
+@app.get("/v1/models")
+async def get_models():
+    try:
+        # 设置当前目录路径
+        current_dir_path = os.path.dirname(os.path.abspath(__file__))
+        workflow_api_path = os.path.join(current_dir_path, "workflow_api")
+
+        # 获取所有 JSON 文件的名称（不含 .json 扩展名）
+        model_names = [
+            os.path.splitext(file)[0]
+            for file in os.listdir(workflow_api_path)
+            if file.endswith(".json")
+        ]
+
+        # 构造返回的结构体
+        response = {
+            "data": [
+                {
+                    "id": model_name,
+                    "object": "model",
+                    "created": int(time.time()),  # 使用当前时间戳
+                    "owned_by": "comfyui-LLM-party",
+                    "permission": []
+                }
+                for model_name in model_names
+            ],
+            "object": "list"
+        }
+
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 创建路由处理函数
 @app.post("/v1/chat/completions")
 async def create_completion(request_data: CompletionRequest, dependency=Depends(verify_api_key)):
-    # 这里可以添加您的处理逻辑
-    # 例如，解析文本和图片URL，并生成相应的响应
     try:
         # 处理请求并生成响应
         response = await process_request(request_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # 返回生成的响应
     return response
 
 
@@ -179,6 +201,7 @@ async def process_request(request_data: CompletionRequest):
     model_name = request_data.model
     print(model_name)
     base64_encoded_list = []
+    system_prompt = ""
     # 遍历消息
     for message in request_data.messages:
         # 检查 content 是否为字符串
@@ -334,5 +357,9 @@ async def process_request(request_data: CompletionRequest):
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="localhost", port=8817)
+    parser = argparse.ArgumentParser(description="Run the server with specified host and port.")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host address to bind the server.")
+    parser.add_argument("--port", type=int, default=8187, help="Port number to bind the server.")
+    
+    args = parser.parse_args()
+    uvicorn.run(app, host=args.host, port=args.port)

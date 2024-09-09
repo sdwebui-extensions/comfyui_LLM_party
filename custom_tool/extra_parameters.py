@@ -9,16 +9,15 @@ class extra_parameters:
                 "json_out": ("BOOLEAN", {"default": False}),
                 "n": ("INT", {"default": 1}),
                 "stop": ("STRING", {"default": ""}),
-                "presence_penalty": ("FLOAT", {"default": 0.0}),
-                "frequency_penalty": ("FLOAT", {"default": 0.0}),
-                "repetition_penalty": ("FLOAT", {"default": 1.0}),
+                "presence_penalty": ("FLOAT", {"default": 0.0,"min": 0.0, "max": 1.0,"step": 0.1}),
+                "frequency_penalty": ("FLOAT", {"default": 0.0,"min": 0.0, "max": 1.0,"step": 0.1}),
+                "repetition_penalty": ("FLOAT", {"default": 1.0,"min": 0.0, "max": 1.0,"step": 0.1}),
                 "min_length": ("INT", {"default": 0}),
                 "logprobs": ("BOOLEAN", {"default": False}),
                 "echo": ("BOOLEAN", {"default": False}),
                 "best_of": ("INT", {"default": 1}),
-                "logit_bias": ("DICT", {"default": {}}),
                 "user": ("STRING", {"default": ""}),
-                "top_p": ("FLOAT", {"default": 1.0}),
+                "top_p": ("FLOAT", {"default": 1.0,"min": 0.0, "max": 1.0,"step": 0.1}),
                 "top_k": ("INT", {"default": 50}),
             }
         }
@@ -37,10 +36,9 @@ class extra_parameters:
         stop="",
         presence_penalty=0.0,
         frequency_penalty=0.0,
-        logprobs=None,
+        logprobs=False,
         echo=False,
         best_of=1,
-        logit_bias={},
         user="",
         json_out=False,
         top_k=50,
@@ -64,8 +62,6 @@ class extra_parameters:
             json_data["echo"] = echo
         if best_of != 1:
             json_data["best_of"] = best_of
-        if logit_bias:
-            json_data["logit_bias"] = logit_bias
         if user:
             json_data["user"] = user
         if json_out:

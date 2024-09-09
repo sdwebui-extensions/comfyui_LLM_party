@@ -13,7 +13,7 @@ import re
 import sys
 import time
 import traceback
-
+import google.generativeai as genai
 import numpy as np
 import openai
 import requests
@@ -25,13 +25,14 @@ from transformers import (
     AutoTokenizer,
     GenerationConfig,
 )
-
+import PIL.Image
 if torch.cuda.is_available():
     from transformers import BitsAndBytesConfig
-
+from google.protobuf.struct_pb2 import Struct
 from torchvision.transforms import ToPILImage
 
 from .config import config_key, config_path, current_dir_path, load_api_keys
+from .tools.lorebook import Lorebook
 from .tools.api_tool import (
     api_function,
     api_tool,
@@ -48,13 +49,13 @@ from .tools.api_tool import (
 from .tools.check_web import check_web, check_web_tool
 from .tools.classify_function import classify_function, classify_function_plus
 from .tools.classify_persona import classify_persona, classify_persona_plus
+from .tools.clear_file import clear_file
 from .tools.clear_model import clear_model
-from .tools.CosyVoice import CosyVoice
 from .tools.custom_persona import custom_persona
 from .tools.dialog import end_dialog, start_dialog
 from .tools.dingding import Dingding, Dingding_tool, send_dingding
 from .tools.end_work import end_workflow, img2path
-from .tools.excel import image_iterator, load_excel
+from .tools.excel import image_iterator, load_excel,json_iterator
 from .tools.feishu import feishu, feishu_tool, send_feishu
 from .tools.file_combine import file_combine, file_combine_plus
 from .tools.get_time import get_time, time_tool
@@ -128,17 +129,17 @@ from .tools.search_web import (
     search_duckduckgo,
 )
 from .tools.show_text import About_us, show_text_party
-from .tools.smalltool import bool_logic, load_int, none2false
+from .tools.smalltool import bool_logic, load_int, none2false,str2float
 from .tools.story import read_story_json, story_json_tool
 from .tools.text_iterator import text_iterator
 from .tools.tool_combine import tool_combine, tool_combine_plus
 from .tools.translate_persona import translate_persona
 from .tools.tts import openai_tts
 from .tools.wechat import send_wechat, work_wechat, work_wechat_tool
-from .tools.whisper import listen_audio, openai_whisper
 from .tools.wikipedia import get_wikipedia, load_wikipedia, wikipedia_tool
 from .tools.workflow import work_flow, workflow_tool, workflow_transfer
-
+from .tools.flux_persona import flux_persona
+from .tools.workflow_V2 import workflow_transfer_v2
 _TOOL_HOOKS = [
     "get_time",
     "get_weather",
@@ -337,6 +338,130 @@ def dispatch_tool(tool_name: str, tool_params: dict) -> str:
     except:
         ret = traceback.format_exc()
     return str(ret)
+def convert_to_gemini(openai_history):
+    for entry in openai_history:
+        role = entry["role"]
+        if role == "system":
+            content = entry["content"]
+            return content
+    return ""
+
+def convert_tool_to_gemini(openai_tools):
+    gemini_tools = []
+    for tool in openai_tools:
+        gemini_tool = {
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {}
+            }
+        }
+        for prop_name, prop_details in tool["function"]["parameters"]["properties"].items():
+            gemini_tool["parameters"]["properties"][prop_name] = {
+                "type": prop_details["type"].upper(),
+                "description": prop_details["description"]
+            }
+        gemini_tool["parameters"]["required"] = tool["function"]["parameters"]["required"]
+        gemini_tools.append(gemini_tool)
+    return gemini_tools
+
+class genChat:
+    def __init__(self, model_name, apikey) -> None:
+        self.model_name = model_name
+        self.apikey = apikey
+
+    def send(
+        self,
+        user_prompt,
+        temperature,
+        max_length,
+        history,
+        tools=None,
+        is_tools_in_sys_prompt="disable",
+        images=None,
+        imgbb_api_key="",
+        **extra_parameters,
+    ):
+        try:
+            if tools is None:
+                tools = []
+            # Function to convert OpenAI history to Gemini history
+            System_prompt= convert_to_gemini(history)
+            if images is not None:
+                i = 255.0 * images[0].cpu().numpy()
+                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                new_message = {"role": "user", "parts": [{"text": user_prompt},{"inline_data": img}]}
+            else:
+                new_message = {"role": "user", "parts": [{"text": user_prompt}]}
+            
+            history.append(new_message)
+            tools = convert_tool_to_gemini(tools)
+            genai.configure(api_key=self.apikey)
+            tool_list={
+                'function_declarations':  tools
+            }
+            if "n" in extra_parameters:
+                extra_parameters["candidate_count"]= extra_parameters["n"]
+                del extra_parameters["n"]
+            # 如果extra_parameters["response_format"]存在就删除它
+            if "response_format" in extra_parameters:
+                del extra_parameters["response_format"]
+                model = genai.GenerativeModel(self.model_name,tools=tool_list,system_instruction=System_prompt,generation_config={"response_mime_type": "application/json"})
+            else:
+                model = genai.GenerativeModel(self.model_name,tools=tool_list,system_instruction=System_prompt)
+            response = model.generate_content(
+                contents= history[1:],
+                generation_config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_length,
+                    **extra_parameters
+                }
+            )
+            if images is not None:
+                # 移除包含 "inline_data" 的部分
+                for message in history:
+                    if "parts" in message:
+                        message["parts"] = [part for part in message["parts"] if "inline_data" not in part]
+
+            while response.candidates[0].content.parts[0].function_call:
+                function_call =response.candidates[0].content.parts[0].function_call
+                name = function_call.name
+                args = {key:value for key, value in function_call.args.items()}
+                res={"role": "model", "parts": response.candidates[0].content.parts}
+                history.append(res)
+                print("正在调用" + name + "工具")
+                results = dispatch_tool(name, args)
+                
+                s = Struct()
+                s.update({"result": results})
+
+                function_response = genai.protos.Part(
+                    function_response=genai.protos.FunctionResponse(name=name, response=s)
+                )
+                res={
+                    "role": "user",
+                    "parts": [function_response]
+                }
+                print("调用结果：" + str(results))
+                history.append(res)
+                response = model.generate_content(
+                    contents= history[1:],
+                    generation_config={
+                        "temperature": temperature,
+                        "max_output_tokens": max_length,
+                        **extra_parameters
+                    }
+                )
+                # 移除history最后两个元素
+                history.pop()
+                history.pop()
+            text = response.candidates[0].content.parts[0].text
+            res={"role": "model", "parts": [{"text": text}]}
+            history.append(res)
+        except Exception as e:
+            return str(e), history
+        return text, history
 
 
 class Chat:
@@ -353,9 +478,59 @@ class Chat:
         history,
         tools=None,
         is_tools_in_sys_prompt="disable",
+        images=None,
+        imgbb_api_key="",
         **extra_parameters,
     ):
         try:
+            if images is not None:
+                if imgbb_api_key == "" or imgbb_api_key is None:
+                    imgbb_api_key = api_keys.get("imgbb_api")
+                if imgbb_api_key == "" or imgbb_api_key is None:
+                    i = 255.0 * images[0].cpu().numpy()
+                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    # 将图片保存到缓冲区
+                    buffered = io.BytesIO()
+                    img.save(buffered, format="PNG")
+                    # 将图片编码为base64
+                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    img_json = [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_str}"},
+                        },
+                    ]
+                    user_prompt = img_json
+                else:
+                    i = 255.0 * images[0].cpu().numpy()
+                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    # 将图片保存到缓冲区
+                    buffered = io.BytesIO()
+                    img.save(buffered, format="PNG")
+                    # 将图片编码为base64
+                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    url = "https://api.imgbb.com/1/upload"
+                    payload = {"key": imgbb_api_key, "image": img_str}
+                    # 向API发送POST请求
+                    response = requests.post(url, data=payload)
+                    # 检查请求是否成功
+                    if response.status_code == 200:
+                        # 解析响应以获取图片URL
+                        result = response.json()
+                        img_url = result["data"]["url"]
+                    else:
+                        return "Error: " + response.text
+                    img_json = [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": img_url,
+                            },
+                        },
+                    ]
+                    user_prompt = img_json
             openai.api_key = self.apikey
             openai.base_url = self.baseurl
             new_message = {"role": "user", "content": user_prompt}
@@ -581,6 +756,50 @@ class LLM_api_loader:
         chat = Chat(model_name, openai.api_key, openai.base_url)
         return (chat,)
 
+
+class genai_api_loader:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": (["gemini-1.0-pro","gemini-1.0-pro-001","gemini-1.5-flash-latest","gemini-1.5-pro-latest"], {"default": "gemini-1.5-flash-latest"}),
+            },
+            "optional": {
+                "api_key": (
+                    "STRING",
+                    {
+                        "default": "AI-XXXXX",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("CUSTOM",)
+    RETURN_NAMES = ("model",)
+
+    FUNCTION = "chatbot"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+
+    def chatbot(self, model_name, api_key=None):
+        api_keys = load_api_keys(config_path)
+        if api_key != "":
+            api_key = api_key
+        elif model_name in config_key:
+            api_keys = config_key[model_name]
+            api_key = api_keys.get("api_key")
+        elif api_keys.get("openai_api_key") != "":
+            api_key = api_keys.get("openai_api_key")
+        if api_key == "":
+            return ("请输入API_KEY",)
+
+        chat = genChat(model_name, api_key)
+        return (chat,)
 
 class LLM:
     original_IS_CHANGED = None
@@ -870,62 +1089,13 @@ class LLM:
                         + "请根据文件内容回答用户问题。\n"
                         + "如果无法从文件内容中找到答案，请回答“抱歉，我无法从文件内容中找到答案。”"
                     )
-
-                if images is not None:
-                    if imgbb_api_key == "" or imgbb_api_key is None:
-                        imgbb_api_key = api_keys.get("imgbb_api")
-                    if imgbb_api_key == "" or imgbb_api_key is None:
-                        i = 255.0 * images[0].cpu().numpy()
-                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                        # 将图片保存到缓冲区
-                        buffered = io.BytesIO()
-                        img.save(buffered, format="PNG")
-                        # 将图片编码为base64
-                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        img_json = [
-                            {"type": "text", "text": user_prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{img_str}"},
-                            },
-                        ]
-                        user_prompt = img_json
-                    else:
-                        i = 255.0 * images[0].cpu().numpy()
-                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                        # 将图片保存到缓冲区
-                        buffered = io.BytesIO()
-                        img.save(buffered, format="PNG")
-                        # 将图片编码为base64
-                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        url = "https://api.imgbb.com/1/upload"
-                        payload = {"key": imgbb_api_key, "image": img_str}
-                        # 向API发送POST请求
-                        response = requests.post(url, data=payload)
-                        # 检查请求是否成功
-                        if response.status_code == 200:
-                            # 解析响应以获取图片URL
-                            result = response.json()
-                            img_url = result["data"]["url"]
-                        else:
-                            return "Error: " + response.text
-                        img_json = [
-                            {"type": "text", "text": user_prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": img_url,
-                                },
-                            },
-                        ]
-                        user_prompt = img_json
                 if extra_parameters is not None and extra_parameters != {}:
                     response, history = model.send(
-                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt, **extra_parameters
+                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key, **extra_parameters
                     )
                 else:
                     response, history = model.send(
-                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt
+                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key
                     )
                 print(response)
                 # 修改prompt.json文件
@@ -935,31 +1105,7 @@ class LLM:
                 history = history_get
                 with open(self.prompt_path, "w", encoding="utf-8") as f:
                     json.dump(history, f, indent=4, ensure_ascii=False)
-                for his in history:
-                    if his["role"] == "user":
-                        # 如果his["content"]是个列表，则只保留"type" : "text"时的"text"属性内容
-                        if isinstance(his["content"], list):
-                            for item in his["content"]:
-                                if item.get("type") == "text" and item.get("text"):
-                                    his["content"] = item["text"]
-                                    break
-                historys = ""
-                # 将history中的消息转换成便于用户阅读的markdown格式
-                for his in history:
-                    if his["role"] == "user":
-                        historys += f"**User:** {his['content']}\n\n"
-                    elif his["role"] == "assistant":
-                        historys += f"**Assistant:** {his['content']}\n\n"
-                    elif his["role"] == "system":
-                        historys += f"**System:** {his['content']}\n\n"
-                    elif his["role"] == "observation":
-                        historys += f"**Observation:** {his['content']}\n\n"
-                    elif his["role"] == "tool":
-                        historys += f"**Tool:** {his['content']}\n\n"
-                    elif his["role"] == "function":
-                        historys += f"**Function:** {his['content']}\n\n"
-
-                history = str(historys)
+                history = json.dumps(history, ensure_ascii=False,indent=4)
                 global image_buffer
                 image_out = image_buffer.copy()
                 image_buffer = []
@@ -996,7 +1142,9 @@ def llm_chat(
     generated_ids = model.generate(
         model_inputs.input_ids,
         max_new_tokens=max_length,
+        do_sample=True,
         temperature=temperature,
+        eos_token_id=tokenizer.eos_token_id,
         **extra_parameters,  # Add the eos_token_id parameter
     )
     generated_ids = [
@@ -1035,13 +1183,13 @@ class LLM_local_loader:
                 "model_path": (
                     "STRING",
                     {
-                        "default": None,
+                        "default": "",
                     },
                 ),
                 "tokenizer_path": (
                     "STRING",
                     {
-                        "default": None,
+                        "default": "",
                     },
                 ),
                 "device": (
@@ -1051,7 +1199,7 @@ class LLM_local_loader:
                     },
                 ),
                 "dtype": (
-                    ["float32", "float16", "int8", "int4"],
+                    ["float32", "float16","bfloat16", "int8", "int4"],
                     {
                         "default": "float32",
                     },
@@ -1121,48 +1269,36 @@ class LLM_local_loader:
             self.device = device
             self.dtype = dtype
         if model_type == "GLM3":
-            if self.tokenizer == "":
+            if not self.tokenizer:
                 self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
-            if self.model == "":
+            if not self.model:
                 if device == "cuda":
                     if dtype == "float32":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).cuda()
                     elif dtype == "float16":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().cuda()
-                    elif dtype == "int8":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(8).half().cuda()
-                        )
-                    elif dtype == "int4":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(4).half().cuda()
-                        )
+                    elif dtype == "bfloat16":
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).cuda()
+                    elif dtype in ["int8", "int4"]:
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().cuda()
                 elif device == "cpu":
                     if dtype == "float32":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).float()
                     elif dtype == "float16":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().float()
-                    elif dtype == "int8":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(8).half().float()
-                        )
-                    elif dtype == "int4":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(4).half().float()
-                        )
+                    elif dtype == "bfloat16":
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).half().float()
+                    elif dtype in ["int8", "int4"]:
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().float()
                 elif device == "mps":
                     if dtype == "float32":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).to("mps")
                     elif dtype == "float16":
                         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().to("mps")
-                    elif dtype == "int8":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(8).half().to("mps")
-                        )
-                    elif dtype == "int4":
-                        self.model = (
-                            AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(4).half().to("mps")
-                        )
+                    elif dtype == "bfloat16":
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).half().to("mps")
+                    elif dtype in ["int8", "int4"]:
+                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().to("mps")
                 self.model = self.model.eval()
 
         elif model_type in ["llama", "Qwen"]:
@@ -1178,6 +1314,10 @@ class LLM_local_loader:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_path, trust_remote_code=True, device_map="cuda"
                         ).half()
+                    elif dtype == "bfloat16":
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            model_path, trust_remote_code=True, device_map="cuda",torch_dtype=torch.bfloat16
+                        )
                     elif dtype == "int8":
                         quantization_config = BitsAndBytesConfig(
                             load_in_8bit=True,
@@ -1201,18 +1341,11 @@ class LLM_local_loader:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_path, trust_remote_code=True, device_map="cpu"
                         )
-                    elif dtype == "float16":
+                    elif dtype in ["float16", "bfloat16", "int8", "int4"]:
+                        print(f"{dtype} is not supported on CPU. Using float32 instead.")
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_path, trust_remote_code=True, device_map="cpu"
-                        ).half()
-                    elif dtype == "int8":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cpu"
-                        ).half()
-                    elif dtype == "int4":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cpu"
-                        ).half()
+                        )
                 elif device == "mps":
                     if dtype == "float32":
                         self.model = AutoModelForCausalLM.from_pretrained(
@@ -1222,11 +1355,8 @@ class LLM_local_loader:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_path, trust_remote_code=True, device_map="mps"
                         ).half()
-                    elif dtype == "int8":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="mps"
-                        ).half()
-                    elif dtype == "int4":
+                    elif dtype in ["bfloat16", "int8", "int4"]:
+                        print(f"{dtype} is not supported on MPS. Using float32 instead.")
                         self.model = AutoModelForCausalLM.from_pretrained(
                             model_path, trust_remote_code=True, device_map="mps"
                         ).half()
@@ -1822,6 +1952,7 @@ NODE_CLASS_MAPPINGS = {
     "LLM": LLM,
     "LLM_local": LLM_local,
     "LLM_api_loader": LLM_api_loader,
+    "genai_api_loader":genai_api_loader,
     "LLM_local_loader": LLM_local_loader,
     "LLavaLoader": LLavaLoader,
     "load_ebd":load_ebd,
@@ -1877,15 +2008,12 @@ NODE_CLASS_MAPPINGS = {
     "omost_setting": omost_setting,
     "keyword_tool": keyword_tool,
     "load_keyword": load_keyword,
-    "listen_audio": listen_audio,
-    "openai_whisper": openai_whisper,
     "story_json_tool": story_json_tool,
     "KG_json_toolkit_developer": KG_json_toolkit_developer,
     "KG_json_toolkit_user": KG_json_toolkit_user,
     "KG_csv_toolkit_developer": KG_csv_toolkit_developer,
     "KG_csv_toolkit_user": KG_csv_toolkit_user,
     "replace_string": replace_string,
-    "CosyVoice": CosyVoice,
     "KG_neo_toolkit_developer": KG_neo_toolkit_developer,
     "KG_neo_toolkit_user": KG_neo_toolkit_user,
     "translate_persona": translate_persona,
@@ -1914,6 +2042,12 @@ NODE_CLASS_MAPPINGS = {
     "bool_logic": bool_logic,
     "duckduckgo_tool":duckduckgo_tool,
     "duckduckgo_loader":duckduckgo_loader,
+    "flux_persona":flux_persona,
+    "clear_file":clear_file,
+    "workflow_transfer_v2":workflow_transfer_v2,
+    "str2float":str2float,
+    "json_iterator":json_iterator,
+    "Lorebook":Lorebook,
 }
 
 
@@ -1927,6 +2061,7 @@ if lang == "zh_CN":
         "LLM": "API大语言模型",
         "LLM_local": "本地大语言模型",
         "LLM_api_loader": "API大语言模型加载器",
+        "genai_api_loader":"Gemini API加载器",
         "LLM_local_loader": "本地大语言模型加载器",
         "LLavaLoader": "LVM加载器",
         "load_ebd": "加载词嵌入",
@@ -1982,15 +2117,12 @@ if lang == "zh_CN":
         "omost_setting": "omost设置",
         "keyword_tool": "搜索关键词工具",
         "load_keyword": "加载关键词检索器",
-        "listen_audio": "监听音频",
-        "openai_whisper": "OpenAI语音识别",
         "story_json_tool": "故事JSON工具",
         "KG_json_toolkit_developer": "知识图谱JSON工具包开发者版",
         "KG_json_toolkit_user": "知识图谱JSON工具包用户版",
         "KG_csv_toolkit_developer": "知识图谱CSV工具包开发者版",
         "KG_csv_toolkit_user": "知识图谱CSV工具包用户版",
         "replace_string": "替换字符串",
-        "CosyVoice": "CosyVoice语音合成",
         "KG_neo_toolkit_developer": "知识图谱Neo4j工具包开发者版",
         "KG_neo_toolkit_user": "知识图谱Neo4j工具包用户版",
         "translate_persona": "翻译面具",
@@ -2019,12 +2151,19 @@ if lang == "zh_CN":
         "bool_logic": "布尔逻辑",
         "duckduckgo_tool": "DuckDuckGo工具",
         "duckduckgo_loader": "DuckDuckGo加载器",
+        "flux_persona":"flux提示词生成器面具",
+        "clear_file":"清理文件",
+        "workflow_transfer_v2":"工作流中转器V2",
+        "str2float":"字符串转浮点数",
+        "json_iterator":"JSON迭代器",
+        "Lorebook":"Lorebook传说书",
     }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
         "LLM": "API Large Language Model",
         "LLM_local": "Local Large Language Model",
         "LLM_api_loader": "API Large Language Model Loader",
+        "genai_api_loader":"Gemini API Loader",
         "LLM_local_loader": "Local Large Language Model Loader",
         "LLavaLoader": "LVM Loader",
         "llama_guff_loader": "llama-guff Loader",
@@ -2081,15 +2220,12 @@ else:
         "omost_setting": "omost Setting",
         "keyword_tool": "Search Keyword Tool",
         "load_keyword": "Load Keyword Searcher",
-        "listen_audio": "Listen Audio",
-        "openai_whisper": "OpenAI Whisper",
         "story_json_tool": "Story JSON Tool",
         "KG_json_toolkit_developer": "KG JSON Toolkit Developer",
         "KG_json_toolkit_user": "KG JSON Toolkit User",
         "KG_csv_toolkit_developer": "KG CSV Toolkit Developer",
         "KG_csv_toolkit_user": "KG CSV Toolkit User",
         "replace_string": "Replace String",
-        "CosyVoice": "CosyVoice TTS",
         "KG_neo_toolkit_developer": "KG Neo4j Toolkit Developer",
         "KG_neo_toolkit_user": "KG Neo4j Toolkit User",
         "translate_persona": "Translate Persona",
@@ -2118,6 +2254,12 @@ else:
         "bool_logic": "Boolean Logic",
         "duckduckgo_tool": "DuckDuckGo Tool",
         "duckduckgo_loader":"DuckDuckGo Loader",
+        "flux_persona":"flux prompt word generator",
+        "clear_file":"clear file",
+        "workflow_transfer_v2": "Workflow Transfer V2",
+        "str2float": "String to Float",
+        "json_iterator": "JSON Iterator",
+        "Lorebook":"Lore book",
     }
 
 
@@ -2173,7 +2315,5 @@ load_custom_tools()
 
 
 if __name__ == "__main__":
-    llm = LLM()
-    res = llm.chatbot(
-        "你好", "你是一个强大的人工智能助手。", "gpt-3.5-turbo", 0.7, tools=time_tool().time("Asia/Shanghai")
-    )
+    print("hello llm party!")
+

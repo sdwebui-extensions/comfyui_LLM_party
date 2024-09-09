@@ -1,7 +1,8 @@
 import json
 import os
 
-import chardet
+import pandas as pd
+from charamel import Detector
 import docx2txt
 import numpy as np
 import openpyxl
@@ -66,9 +67,10 @@ def read_one(path):
                     text += "| " + " | ".join([str(cell) for cell in sheet.row_values(row_num)]) + " |\n"
     elif path.endswith(".csv"):
         # 检测文件编码
+        detector = Detector()
         with open(path, "rb") as file:
-            result = chardet.detect(file.read())
-            encoding = result["encoding"]
+            content = file.read()
+        encoding = detector.detect(content)
         df = pd.read_csv(path, encoding=encoding)
         text += df.to_markdown(index=True)
     elif path.endswith(".txt"):
@@ -223,9 +225,9 @@ class start_workflow:
                 "file_content": ("STRING", {"forceInput": True}),
                 "image_input1": ("IMAGE", {}),
                 "image_input2": ("IMAGE", {}),
-                "file_path": ("STRING", {"default": None}),
-                "img_path1": ("STRING", {"default": None, "image_upload": True}),
-                "img_path2": ("STRING", {"default": None, "image_upload": True}),
+                "file_path": ("STRING", {"default": ""}),
+                "img_path1": ("STRING", {"default": "", "image_upload": True}),
+                "img_path2": ("STRING", {"default": "", "image_upload": True}),
                 "system_prompt": ("STRING", {"default": "你是一个强大的智能助手"}),
                 "user_prompt": ("STRING", {"default": "你好"}),
                 "positive_prompt": ("STRING", {"default": ""}),
@@ -264,11 +266,11 @@ class start_workflow:
     def load_all(
         self,
         file_content="",
-        image_input1=None,
-        image_input2=None,
-        file_path=None,
-        img_path1=None,
-        img_path2=None,
+        image_input1="",
+        image_input2="",
+        file_path="",
+        img_path1="",
+        img_path2="",
         system_prompt="你是一个强大的智能助手",
         user_prompt="你好",
         positive_prompt="",
@@ -288,13 +290,12 @@ class start_workflow:
                 file_out = read_one(path)
         img_out = []
         if image_input1 is not None:
-            for image in image_input1:
-                img_out.append(image)
+            img_out=image_input1
         img_out2 = []
         if image_input2 is not None:
-            for image in image_input2:
-                img_out2.append(image)
+            img_out2=image_input2
         if img_path1 is not None and img_path1 != "":
+            img_out = []
             # 检查img_path是否是一个目录
             if os.path.isdir(img_path1):
                 # 遍历目录中的所有文件
@@ -321,12 +322,13 @@ class start_workflow:
                     image = torch.from_numpy(image).unsqueeze(0)
                     img_out.append(image)
 
-        if len(img_out) > 1:
-            img_out = torch.cat(img_out, dim=0)
-        elif img_out:
-            img_out = img_out[0]
+            if len(img_out) > 1:
+                img_out = torch.cat(img_out, dim=0)
+            elif img_out:
+                img_out = img_out[0]
 
         if img_path2 is not None and img_path2 != "":
+            img_out2 = []
             # 检查img_path是否是一个目录
             if os.path.isdir(img_path2):
                 # 遍历目录中的所有文件
@@ -353,10 +355,10 @@ class start_workflow:
                     image = torch.from_numpy(image).unsqueeze(0)
                     img_out2.append(image)
 
-        if len(img_out2) > 1:
-            img_out2 = torch.cat(img_out2, dim=0)
-        elif img_out2:
-            img_out2 = img_out2[0]
+            if len(img_out2) > 1:
+                img_out2 = torch.cat(img_out2, dim=0)
+            elif img_out2:
+                img_out2 = img_out2[0]
 
         system_out = system_prompt
         user_out = user_prompt
@@ -380,7 +382,7 @@ class load_img_path:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "img_path": ("STRING", {"default": None, "image_upload": True}),
+                "img_path": ("STRING", {"default": "", "image_upload": True}),
             },
         }
 

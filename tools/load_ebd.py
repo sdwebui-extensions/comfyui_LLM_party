@@ -25,7 +25,7 @@ class ebd_tool:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "path": ("STRING", {"default": None}),
+                "path": ("STRING", {"default":""}),
                 "is_enable": (["enable", "disable"], {"default": "enable"}),
                 "k": ("INT", {"default": 5}),
                 "device": (
@@ -102,7 +102,7 @@ class load_ebd:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "path": ("STRING", {"default": None}),
+                "path": ("STRING", {"default": ""}),
                 "is_enable": ("BOOLEAN", {"default": True}),
                 "device": (
                     ["auto", "cuda", "mps", "cpu"],

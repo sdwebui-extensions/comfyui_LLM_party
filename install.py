@@ -1,15 +1,11 @@
 import importlib
-import inspect
 import os
 import platform
 import re
-import shutil
 import subprocess
 import sys
 
 import packaging.tags
-import pkg_resources
-import torch
 from requests import get
 
 
@@ -55,69 +51,40 @@ def install_llama_package(package_name, custom_command=None):
 
 def package_is_installed(package_name):
     try:
-        pkg_resources.get_distribution(package_name)
+        importlib.metadata.version(package_name)
         return True
-    except pkg_resources.DistributionNotFound:
+    except importlib.metadata.PackageNotFoundError:
         return False
-
+    
+def extract_version(tag_name):
+    pattern = r'(\d+\.\d+\.\d+)-'
+    match = re.search(pattern, tag_name)
+    if match:
+        return match.group(1)
+    else:
+        print(f"No match found for: {tag_name}")
+    return None
 
 def install_llama(system_info):
     imported = package_is_installed("llama-cpp-python") or package_is_installed("llama_cpp")
     if imported:
         print("llama-cpp installed")
     else:
-        lcpp_version = latest_lamacpp(system_info)
-        base_url = "https://github.com/abetlen/llama-cpp-python/releases/download/v"
         avx = "AVX2" if system_info["avx2"] else "AVX"
-        python_version = get_python_version()
+        
         if system_info.get("gpu", False):
             cuda_version = system_info["cuda_version"]
             custom_command = f"--force-reinstall --no-deps --index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/{cuda_version}"
+            print("cuda " + custom_command)
         elif system_info.get("metal", False):
-            custom_command = f"{base_url}{lcpp_version}/llama_cpp_python-{lcpp_version}-cp{python_version}-cp{python_version}-{system_info['platform_tag']}.whl"
+            custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/basic/cpu"
+            print("mps " + custom_command)
         else:
-            custom_command = f"{base_url}{lcpp_version}/llama_cpp_python-{lcpp_version}-cp{python_version}-cp{python_version}-{system_info['platform_tag']}.whl"
+            custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/cpu"
+            print("cpu " + custom_command)
+        
         install_llama_package("llama-cpp-python", custom_command=custom_command)
 
-
-def get_comfy_dir():
-    # 获取当前脚本文件的绝对路径
-    current_file_path = os.path.abspath(__file__)
-    # 获取当前脚本文件所在目录
-    current_dir = os.path.dirname(current_file_path)
-    # 获取目标目录的绝对路径
-    comfy_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
-    # 获取"web/extensions/party"目录的绝对路径
-    comfy_dir = os.path.join(comfy_dir, "web/extensions/party")
-    return comfy_dir
-
-
-def copy_js_files():
-    # 设置当前文件夹路径和目标文件夹路径
-    current_folder = os.path.dirname(os.path.abspath(__file__))
-    target_folder = get_comfy_dir()
-
-    # 确保目标文件夹存在
-    os.makedirs(target_folder, exist_ok=True)
-
-    # 清空目标文件夹里所有文件
-    for filename in os.listdir(target_folder):
-        file_path = os.path.join(target_folder, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-
-        except Exception as e:
-            print(f"无法删除文件 {file_path}: {e}")
-
-    # 获取当前文件夹中web子文件夹下的所有.js文件
-    js_files = [f for f in os.listdir(os.path.join(current_folder, "web")) if f.endswith(".js")]
-
-    # 复制文件
-    for file_name in js_files:
-        source_file = os.path.join(current_folder, "web", file_name)
-        target_file = os.path.join(target_folder, file_name)
-        shutil.copy2(source_file, target_file)
 
 
 def get_system_info():
@@ -178,7 +145,7 @@ def check_and_uninstall_websocket():
     interpreter = sys.executable
 
     # 检查websocket库是否已安装
-    installed_packages = {pkg.key for pkg in pkg_resources.working_set}
+    installed_packages = {dist.metadata['Name'].lower() for dist in importlib.metadata.distributions()}
     websocket_installed = "websocket" in installed_packages
     websocket_client_installed = "websocket-client" in installed_packages
 
@@ -206,6 +173,20 @@ def init_temp():
     current_dir_path = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(os.path.join(current_dir_path, "temp"), exist_ok=True)
 
+def install_homebrew():
+    try:
+        result = subprocess.run(["brew", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            print("Homebrew is not installed. Please install Homebrew first.")
+            print("You can install Homebrew by running the following command:")
+            print('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"')
+            return False
+        else:
+            print("Homebrew is already installed.")
+            return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking Homebrew installation: {e}")
+        return False
 
 def install_portaudio():
     try:
@@ -248,12 +229,13 @@ def install_portaudio():
                     else:
                         print("libportaudio2 is already installed.")
             elif sys.platform == "darwin":
-                # macOS
-                result = subprocess.run(["brew", "list", "portaudio"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode != 0:
-                    subprocess.check_call(["brew", "install", "portaudio"])
-                else:
-                    print("portaudio is already installed.")
+                if install_homebrew():
+                    result = subprocess.run(["brew", "list", "portaudio"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if result.returncode != 0:
+                        os.system("brew update")
+                        os.system("brew install portaudio")
+                    else:
+                        print("portaudio is already installed.")
         elif os.name == "nt":
             pass
         else:
@@ -299,7 +281,6 @@ install_portaudio()
 check_and_uninstall_websocket()
 
 # 调用函数
-copy_js_files()
 system_info = get_system_info()
 # install_llama(system_info)
 init_temp()
