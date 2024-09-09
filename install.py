@@ -263,21 +263,22 @@ def install_package(package_name):
 
 
 def manage_discord_packages():
+    pass
     # 检查并卸载 discord.py 和 discord.py[voice]
-    if package_is_installed("discord.py"):
-        uninstall_package("discord.py")
+    # if package_is_installed("discord.py"):
+    #     uninstall_package("discord.py")
 
-    if package_is_installed("discord.py[voice]"):
-        uninstall_package("discord.py[voice]")
+    # if package_is_installed("discord.py[voice]"):
+    #     uninstall_package("discord.py[voice]")
 
     # 检查并安装 py-cord[voice]
-    if not package_is_installed("py-cord[voice]"):
-        install_package("py-cord[voice]")
-    else:
-        print("py-cord[voice] is already installed")
+    # if not package_is_installed("py-cord[voice]"):
+    #     install_package("py-cord[voice]")
+    # else:
+    #     print("py-cord[voice] is already installed")
 
 
-install_portaudio()
+# install_portaudio()
 check_and_uninstall_websocket()
 
 # 调用函数
