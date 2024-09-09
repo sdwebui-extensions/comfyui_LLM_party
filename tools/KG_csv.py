@@ -6,8 +6,16 @@ from collections import deque
 import pandas as pd
 
 from ..config import current_dir_path
+import folder_paths
 
-file_path = os.path.join(current_dir_path, "KG")
+folder_paths.folder_names_and_paths["KG"] = (
+        [
+            os.path.join(folder_paths.models_dir, "KG"),
+            os.path.join(current_dir_path, "KG"),
+        ],
+        {".csv", ".json"},
+    )
+
 
 KG_path = ""
 
@@ -16,11 +24,10 @@ class KG_csv_toolkit_developer:
     @classmethod
     def INPUT_TYPES(s):
         # 获取file_path文件夹下的所有json文件的文件名
-        paths = [f for f in os.listdir(file_path) if f.endswith(".csv")]
         return {
             "required": {
                 "absolute_path": ("STRING", {"default": ""}),
-                "relative_path": (paths, {"default": "test.csv"}),
+                "relative_path": (folder_paths.get_filename_list("KG"), {"default": "test.csv"}),
                 "is_enable": ("BOOLEAN", {"default": True}),
             },
             "optional": {},
@@ -39,10 +46,7 @@ class KG_csv_toolkit_developer:
         if is_enable == False:
             return (None,)
         global KG_path
-        if absolute_path != "":
-            KG_path = absolute_path
-        else:
-            KG_path = os.path.join(file_path, relative_path)
+        KG_path = folder_paths.get_full_path("KG", relative_path)
         output = [
             {
                 "type": "function",
@@ -128,7 +132,7 @@ class KG_csv_toolkit_user:
     @classmethod
     def INPUT_TYPES(s):
         # 获取file_path文件夹下的所有json文件的文件名
-        paths = [f for f in os.listdir(file_path) if f.endswith(".csv")]
+        paths = folder_paths.get_filename_list("KG")
         return {
             "required": {
                 "absolute_path": ("STRING", {"default": ""}),
@@ -151,10 +155,7 @@ class KG_csv_toolkit_user:
         if is_enable == False:
             return (None,)
         global KG_path
-        if absolute_path != "":
-            KG_path = absolute_path
-        else:
-            KG_path = os.path.join(file_path, relative_path)
+        KG_path = folder_paths.get_full_path("KG", relative_path)
         output = [
             {
                 "type": "function",
