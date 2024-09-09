@@ -70,7 +70,7 @@ def copy_js_files():
 # install_portaudio()
 copy_js_files()
 system_info = get_system_info()
-install_llama(system_info)
+# install_llama(system_info)
 check_and_uninstall_websocket()
 init_temp()
 manage_discord_packages()
