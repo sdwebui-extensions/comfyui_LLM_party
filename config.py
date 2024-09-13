@@ -2,6 +2,7 @@
 import configparser
 import os
 import shutil
+import folder_paths
 
 current_file_path = os.path.abspath(__file__)
 
@@ -9,11 +10,13 @@ current_file_path = os.path.abspath(__file__)
 current_dir_path = os.path.dirname(current_file_path)
 
 # 构建config.ini的绝对路径
-config_path = os.path.join(current_dir_path, "config.ini")
+config_path = os.path.join(folder_paths.models_dir, "llm_party", "config.ini")
+if not os.path.exists(os.path.dirname(config_path)):
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
 
 def copy_config():
-    config_path = os.path.join(current_dir_path, "config.ini")
+    config_path = os.path.join(folder_paths.models_dir, "llm_party", "config.ini")
     config_example_path = os.path.join(current_dir_path, "config.ini.example")
     # 判断config.ini是否存在
     if not os.path.exists(config_path):

@@ -690,7 +690,7 @@ class Chat:
             response_content = str(ex)
         return response_content, history
 
-
+folder_paths.add_folder_path_and_extensions("llm_api_config", [os.path.join(folder_paths.models_dir, "llm_api_config")], {'.json'})
 class LLM_api_loader:
     def __init__(self):
         pass
