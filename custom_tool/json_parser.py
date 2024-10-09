@@ -32,7 +32,14 @@ def json_loader(file_path: str, is_enable=True) -> str:
     output = load_json_file(file_path)
     output = json.dumps(output, ensure_ascii=False)
     return output
+class AnyType(str):
+    """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
 
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+
+any_type = AnyType("*")
 
 class json_parser:
     @classmethod
@@ -47,7 +54,7 @@ class json_parser:
 
     RETURN_TYPES = (
         "STRING",
-        "STRING",
+        any_type,
     )
     RETURN_NAMES = (
         "show_json_file",
@@ -56,7 +63,7 @@ class json_parser:
     OUTPUT_NODE = True
     FUNCTION = "json_parser_tool"
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def json_parser_tool(self, file_path: str, key=None, is_enable=True):
         if is_enable == False:
@@ -73,11 +80,11 @@ class json_parser:
         except KeyError:
             print(f"Key '{key}' not found in JSON data.")
             value = None
-        out = json.dumps(value, ensure_ascii=False)
         return (
             data_json,
-            out,
+            value,
         )
+
 
 
 class json_get_value:
@@ -91,10 +98,10 @@ class json_get_value:
             }
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("content",)
+    RETURN_TYPES = (any_type,)
+    RETURN_NAMES = ("any",)
     FUNCTION = "get_value"
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def get_value(self, text, key=None, is_enable=True):
         if is_enable == False:
@@ -111,7 +118,10 @@ class json_get_value:
             # 判断是否为列表或者是字典
             if isinstance(out, list) or isinstance(out, dict):
                 out = json.dumps(out, ensure_ascii=False, indent=4)
-            return (out.strip(),)
+                return (out.strip(),)
+            else:
+                return (out,)
+            
         except json.JSONDecodeError:
             print("Invalid JSON format.")
             return (None,)

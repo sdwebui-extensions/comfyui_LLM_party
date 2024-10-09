@@ -47,7 +47,7 @@ class none2false:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def tts(self, any):
         if any is None:
@@ -76,7 +76,7 @@ class bool_logic:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def tts(self, A, B=True, logic_type="and"):
         if logic_type == "and":
@@ -111,7 +111,58 @@ class str2float:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def tts(self, text):
         return (float(text),)
+    
+class str2int:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("STRING", {}),
+            },
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("int",)
+
+    FUNCTION = "tts"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
+
+    def tts(self, text):
+        return (int(text),)
+    
+class AnyType(str):
+    """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
+
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+
+any_type = AnyType("*")
+
+class any2str:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "any": (any_type, {}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+
+    FUNCTION = "tts"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "大模型派对（llm_party）/转换器（converter）"
+
+    def tts(self,any):
+        return (str(any),)

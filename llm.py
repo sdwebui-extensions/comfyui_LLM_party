@@ -22,8 +22,11 @@ from PIL import Image
 from transformers import (
     AutoModel,
     AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM, 
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     GenerationConfig,
+    AutoConfig,
 )
 import PIL.Image
 if torch.cuda.is_available():
@@ -52,7 +55,7 @@ from .tools.classify_persona import classify_persona, classify_persona_plus
 from .tools.clear_file import clear_file
 from .tools.clear_model import clear_model
 from .tools.custom_persona import custom_persona
-from .tools.dialog import end_dialog, start_dialog
+from .tools.dialog import end_dialog, start_dialog,start_anything,end_anything
 from .tools.dingding import Dingding, Dingding_tool, send_dingding
 from .tools.end_work import end_workflow, img2path
 from .tools.excel import image_iterator, load_excel,json_iterator
@@ -115,7 +118,6 @@ from .tools.load_file import (
 from .tools.load_model_name import load_name
 from .tools.load_persona import load_persona
 from .tools.logic import get_string, replace_string, string_logic, substring
-from .tools.new_interpreter import new_interpreter, new_interpreter_tool
 from .tools.omost import omost_decode, omost_setting
 from .tools.search_web import (
     bing_loader,
@@ -129,9 +131,9 @@ from .tools.search_web import (
     search_duckduckgo,
 )
 from .tools.show_text import About_us, show_text_party
-from .tools.smalltool import bool_logic, load_int, none2false,str2float
+from .tools.smalltool import bool_logic, load_int, none2false,str2float,str2int,any2str
 from .tools.story import read_story_json, story_json_tool
-from .tools.text_iterator import text_iterator
+from .tools.text_iterator import text_iterator,text_writing
 from .tools.tool_combine import tool_combine, tool_combine_plus
 from .tools.translate_persona import translate_persona
 from .tools.tts import openai_tts
@@ -151,7 +153,6 @@ _TOOL_HOOKS = [
     "interpreter",
     "data_base",
     "another_llm",
-    "new_interpreter",
     "use_api_tool",
     "get_accuweather",
     "get_wikipedia",
@@ -330,11 +331,12 @@ def dispatch_tool(tool_name: str, tool_params: dict) -> str:
     tool_call = globals().get(tool_name)
     try:
         ret_out = tool_call(**tool_params)
-        if tool_name == "work_flow":
+        if isinstance(ret_out, tuple):
             ret = ret_out[0]
+            global image_buffer
             image_buffer = ret_out[1]
             if ret == "" or ret is None:
-                ret = "图片已生成。"
+                ret = "图片已生成。并以展示在本节点的image输出中。可以使用preview_image节点查看图片。"
         else:
             ret = ret_out
     except:
@@ -533,12 +535,107 @@ class Chat:
                         },
                     ]
                     user_prompt = img_json
+            if "o1" in self.model_name:
+                # 将history中的系统提示词部分的角色换成user
+                for i in range(len(history)):
+                    if history[i]["role"] == "system":
+                        history[i]["role"] = "user"
+                        history.append({"role": "assistant", "content": "好的，我会按照你的指示来操作"})
+                        break
             openai.api_key = self.apikey
             openai.base_url = self.baseurl
             new_message = {"role": "user", "content": user_prompt}
             history.append(new_message)
             print(history)
-            if tools is not None:
+            if "o1" in self.model_name:
+                if tools is not None:
+                    response = openai.chat.completions.create(
+                        model=self.model_name,
+                        messages=history,
+                        tools=tools,
+                        **extra_parameters,
+                    )
+                    while response.choices[0].message.tool_calls:
+                        assistant_message = response.choices[0].message
+                        response_content = assistant_message.tool_calls[0].function
+                        print("正在调用" + response_content.name + "工具")
+                        print(response_content.arguments)
+                        results = dispatch_tool(response_content.name, json.loads(response_content.arguments))
+                        print(results)
+                        history.append(
+                            {
+                                "tool_calls": [
+                                    {
+                                        "id": assistant_message.tool_calls[0].id,
+                                        "function": {
+                                            "arguments": response_content.arguments,
+                                            "name": response_content.name,
+                                        },
+                                        "type": assistant_message.tool_calls[0].type,
+                                    }
+                                ],
+                                "role": "assistant",
+                                "content": str(response_content),
+                            }
+                        )
+                        history.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": assistant_message.tool_calls[0].id,
+                                "name": response_content.name,
+                                "content": results,
+                            }
+                        )
+                        response = openai.chat.completions.create(
+                            model=self.model_name,
+                            messages=history,
+                            tools=tools,
+                            **extra_parameters,
+                        )
+                        print(response)
+                elif is_tools_in_sys_prompt == "enable":
+                    response = openai.chat.completions.create(
+                        model=self.model_name,
+                        messages=history,
+                        **extra_parameters,
+                    )
+                    response_content = response.choices[0].message.content
+                    # 正则表达式匹配
+                    pattern = r'\{\s*"tool":\s*"(.*?)",\s*"parameters":\s*\{(.*?)\}\s*\}'
+                    while re.search(pattern, response_content, re.DOTALL) != None:
+                        match = re.search(pattern, response_content, re.DOTALL)
+                        tool = match.group(1)
+                        parameters = match.group(2)
+                        json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
+                        print("正在调用" + tool + "工具")
+                        parameters = json.loads("{" + parameters + "}")
+                        results = dispatch_tool(tool, parameters)
+                        print(results)
+                        history.append({"role": "assistant", "content": json_str})
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": "调用"
+                                + tool
+                                + "工具返回的结果为："
+                                + results
+                                + "。请根据工具返回的结果继续回答我之前提出的问题。",
+                            }
+                        )
+                        response = openai.chat.completions.create(
+                            model=self.model_name,
+                            messages=history,
+                            **extra_parameters,
+                        )
+                        response_content = response.choices[0].message.content
+                else:
+                    response = openai.chat.completions.create(
+                        model=self.model_name,
+                        messages=history,
+                        **extra_parameters,
+                    )
+                    print(response)
+            elif tools is not None:
                 response = openai.chat.completions.create(
                     model=self.model_name,
                     messages=history,
@@ -757,7 +854,45 @@ class LLM_api_loader:
 
         chat = Chat(model_name, openai.api_key, openai.base_url)
         return (chat,)
+llm_api_keys = load_api_keys(config_path)
+llm_api_key=llm_api_keys.get("openai_api_key").strip()
+llm_base_url=llm_api_keys.get("base_url").strip()
+if llm_api_key == "" or llm_api_key =="sk-XXXXX" or llm_base_url == "":
+    models_dict =[]
+else:
+    try:
+        client = openai.OpenAI(api_key=llm_api_key, base_url=llm_base_url)
+        models_response = client.models.list()
+        # 将模型列表转换为字典
+        models_dict = [model.id for model in models_response.data]
+        openai.api_key=llm_api_key
+        openai.base_url=llm_base_url+"/"
+    except Exception as e:
+        models_dict = []
+class easy_LLM_api_loader:
+    def __init__(self):
+        pass
 
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": (models_dict, {"default": "gpt-4o-mini"}),
+            },
+        }
+
+    RETURN_TYPES = ("CUSTOM",)
+    RETURN_NAMES = ("model",)
+
+    FUNCTION = "chatbot"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+
+    def chatbot(self, model_name):
+        chat = Chat(model_name, openai.api_key, openai.base_url)
+        return (chat,)
 
 class genai_api_loader:
     def __init__(self):
@@ -767,7 +902,7 @@ class genai_api_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": (["gemini-1.0-pro","gemini-1.0-pro-001","gemini-1.5-flash-latest","gemini-1.5-pro-latest"], {"default": "gemini-1.5-flash-latest"}),
+                "model_name": ("STRING", {"default": "gemini-1.5-flash-latest"}),
             },
             "optional": {
                 "api_key": (
@@ -804,8 +939,6 @@ class genai_api_loader:
         return (chat,)
 
 class LLM:
-    original_IS_CHANGED = None
-
     def __init__(self):
         current_time = datetime.datetime.now()
         # 以时间戳作为ID，字符串格式 XX年XX月XX日XX时XX分XX秒并加上一个哈希值防止重复
@@ -850,7 +983,7 @@ class LLM:
                 "is_tools_in_sys_prompt": (["enable", "disable"], {"default": "disable"}),
                 "is_locked": (["enable", "disable"], {"default": "disable"}),
                 "main_brain": (["enable", "disable"], {"default": "enable"}),
-                "max_length": ("FLOAT", {"default": 1920, "min": 256, "max": 128000, "step": 128}),
+                "max_length": ("INT", {"default": 1920, "min": 256, "max": 128000, "step": 128}),
             },
             "optional": {
                 "system_prompt_input": ("STRING", {"forceInput": True}),
@@ -957,9 +1090,6 @@ class LLM:
                 llm_tools_list.append(self.tool_data)
                 self.added_to_list = True
         self.is_locked = is_locked
-        if LLM.original_IS_CHANGED is None:
-            # 保存原始的IS_CHANGED方法的引用
-            LLM.original_IS_CHANGED = LLM.IS_CHANGED
         if self.is_locked == "disable":
             setattr(LLM, "IS_CHANGED", LLM.original_IS_CHANGED)
         else:
@@ -998,9 +1128,18 @@ class LLM:
             )
         else:
             try:
-                if is_memory == "disable":
+                if is_memory == "disable" or "clear party memory" in user_prompt:
                     with open(self.prompt_path, "w", encoding="utf-8") as f:
                         json.dump([{"role": "system", "content": system_prompt}], f, indent=4, ensure_ascii=False)
+                    if "clear party memory" in user_prompt:
+                        with open(self.prompt_path, "r", encoding="utf-8") as f:
+                            history = json.load(f)
+                        return (
+                            "party memory has been cleared, please ask me again, powered by LLM party!",
+                            str(history),
+                            llm_tools_json,
+                            None,
+                        )
                 api_keys = load_api_keys(config_path)
 
                 with open(self.prompt_path, "r", encoding="utf-8") as f:
@@ -1109,10 +1248,7 @@ class LLM:
                     json.dump(history, f, indent=4, ensure_ascii=False)
                 history = json.dumps(history, ensure_ascii=False,indent=4)
                 global image_buffer
-                image_out = image_buffer.copy()
-                image_buffer = []
-                if image_out == []:
-                    image_out = None
+                image_out = image_buffer
                 return (
                     response,
                     history,
@@ -1129,7 +1265,7 @@ class LLM:
                 )
 
     @classmethod
-    def IS_CHANGED(s):
+    def original_IS_CHANGED(s):
         # 生成当前时间的哈希值
         hash_value = hashlib.md5(str(datetime.datetime.now()).encode()).hexdigest()
         return hash_value
@@ -1139,6 +1275,25 @@ def llm_chat(
     model, tokenizer, user_prompt, history, device, max_length, role="user", temperature=0.7, **extra_parameters
 ):
     history.append({"role": role, "content": user_prompt.strip()})
+    # 检查是否已经设置了 chat_template
+    if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
+        # 如果没有设置 chat_template，尝试使用 default_chat_template
+        if hasattr(tokenizer, 'default_chat_template') and tokenizer.default_chat_template is not None:
+            tokenizer.chat_template = tokenizer.default_chat_template
+        else:
+            print("chat_template is not set")
+            model_inputs = tokenizer([user_prompt.strip()], return_tensors="pt").to(device)
+            generated_ids = model.generate(
+                model_inputs.input_ids,
+                max_new_tokens=max_length,
+                do_sample=True,
+                temperature=temperature,
+                eos_token_id=tokenizer.eos_token_id,
+                **extra_parameters,  # Add the eos_token_id parameter
+            )
+            response = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+            history.append({"role": "assistant", "content": response})
+            return response, history
     text = tokenizer.apply_chat_template(history, tokenize=False, add_generation_prompt=True)
     model_inputs = tokenizer([text], return_tensors="pt").to(device)
     generated_ids = model.generate(
@@ -1156,17 +1311,52 @@ def llm_chat(
     history.append({"role": "assistant", "content": response})
     return response, history
 
+def vlm_chat(
+    model, processor, image, user_prompt, history, device, max_length, role="user", temperature=0.7, **extra_parameters
+):
+    if image !=[]:
+        user_content = {
+            "role": role,
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": user_prompt},
+            ],
+        }
+        history.append(user_content)
+        input_text = processor.apply_chat_template(history, add_generation_prompt=True)
+        inputs = processor(image, input_text, return_tensors="pt").to(device)
+    else:
+        user_content = {
+            "role": role,
+            "content": [
+                {"type": "text", "text": user_prompt},
+            ],
+        }
+        history.append(user_content)
+        input_text = processor.apply_chat_template(history, add_generation_prompt=True)
+        inputs = processor(text=input_text, return_tensors="pt").to(device)
+    
+
+    output = model.generate(**inputs, max_new_tokens=max_length, temperature=temperature, **extra_parameters)
+    response = processor.decode(output[0], skip_special_tokens=True)
+    # 使用正则表达式提取最后一个助手的回答
+    matches = re.findall(r'assistant\s*(.*?)(?=\s*(?:system|user|$))', response, re.DOTALL)
+    if matches:
+        assistant_output = matches[-1].strip()
+    else:
+        assistant_output = response.strip()
+    history.append({"role": "assistant", "content":assistant_output})
+    
+    return assistant_output, history
+
+
 
 class LLM_local_loader:
-    original_IS_CHANGED = None
-
     def __init__(self):
         self.id = hash(str(self))
         self.device = ""
         self.dtype = ""
-        self.model_type = ""
-        self.model_path = ""
-        self.tokenizer_path = ""
+        self.model_name_or_path = ""
         self.model = ""
         self.tokenizer = ""
         self.is_locked = False
@@ -1175,25 +1365,7 @@ class LLM_local_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": ("STRING", {"default": ""}),
-                "model_type": (
-                    ["llama","GLM3",  "Qwen"],
-                    {
-                        "default": "llama",
-                    },
-                ),
-                "model_path": (
-                    "STRING",
-                    {
-                        "default": "",
-                    },
-                ),
-                "tokenizer_path": (
-                    "STRING",
-                    {
-                        "default": "",
-                    },
-                ),
+                "model_name_or_path": ("STRING", {"default": ""}),
                 "device": (
                     ["auto", "cuda", "cpu", "mps"],
                     {
@@ -1225,34 +1397,21 @@ class LLM_local_loader:
 
     CATEGORY = "大模型派对（llm_party）/加载器（loader）"
 
-    def chatbot(self, model_name, model_type, model_path, tokenizer_path, device, dtype, is_locked=False):
+    def chatbot(self, model_name_or_path, device, dtype, is_locked=True):
         self.is_locked = is_locked
-        if LLM_local_loader.original_IS_CHANGED is None:
-            # 保存原始的IS_CHANGED方法的引用
-            LLM_local_loader.original_IS_CHANGED = LLM_local_loader.IS_CHANGED
         if self.is_locked == False:
             setattr(LLM_local_loader, "IS_CHANGED", LLM_local_loader.original_IS_CHANGED)
         else:
             # 如果方法存在，则删除
             if hasattr(LLM_local_loader, "IS_CHANGED"):
                 delattr(LLM_local_loader, "IS_CHANGED")
-        if model_path != "" and tokenizer_path != "":
-            model_name = ""
-        if model_name in config_key:
-            model_path = config_key[model_name].get("model_path")
-            tokenizer_path = config_key[model_name].get("tokenizer_path")
-        elif model_name != "":
-            model_path = model_name
-            tokenizer_path = model_name
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
         if (
-            self.model_type != model_type
-            or self.device != device
+            self.device != device
             or self.dtype != dtype
-            or self.model_path != model_path
-            or self.tokenizer_path != tokenizer_path
+            or self.model_name_or_path != model_name_or_path
             or is_locked == False
         ):
             del self.model
@@ -1265,119 +1424,155 @@ class LLM_local_loader:
                 gc.collect()
             self.model = ""
             self.tokenizer = ""
-            self.model_type = model_type
-            self.model_path = model_path
-            self.tokenizer_path = tokenizer_path
+            self.model_name_or_path = model_name_or_path
             self.device = device
             self.dtype = dtype
-        if model_type == "GLM3":
-            if not self.tokenizer:
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
-            if not self.model:
-                if device == "cuda":
-                    if dtype == "float32":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).cuda()
-                    elif dtype == "float16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().cuda()
-                    elif dtype == "bfloat16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).cuda()
-                    elif dtype in ["int8", "int4"]:
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().cuda()
-                elif device == "cpu":
-                    if dtype == "float32":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).float()
-                    elif dtype == "float16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().float()
-                    elif dtype == "bfloat16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).half().float()
-                    elif dtype in ["int8", "int4"]:
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().float()
-                elif device == "mps":
-                    if dtype == "float32":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).to("mps")
-                    elif dtype == "float16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).half().to("mps")
-                    elif dtype == "bfloat16":
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.bfloat16).half().to("mps")
-                    elif dtype in ["int8", "int4"]:
-                        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True).quantize(int(dtype[-1])).half().to("mps")
-                self.model = self.model.eval()
+            model_kwargs = {
+                'device_map': device,
+            }
 
-        elif model_type in ["llama", "Qwen"]:
-            if self.tokenizer == "":
-                self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
-            if self.model == "":
-                if device == "cuda":
-                    if dtype == "float32":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cuda"
-                        )
-                    elif dtype == "float16":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cuda"
-                        ).half()
-                    elif dtype == "bfloat16":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cuda",torch_dtype=torch.bfloat16
-                        )
-                    elif dtype == "int8":
-                        quantization_config = BitsAndBytesConfig(
-                            load_in_8bit=True,
-                        )
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path,
-                            trust_remote_code=True,
-                            device_map="cuda",
-                            quantization_config=quantization_config,
-                        )
-                    elif dtype == "int4":
-                        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path,
-                            trust_remote_code=True,
-                            device_map="cuda",
-                            quantization_config=quantization_config,
-                        )
-                elif device == "cpu":
-                    if dtype == "float32":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cpu"
-                        )
-                    elif dtype in ["float16", "bfloat16", "int8", "int4"]:
-                        print(f"{dtype} is not supported on CPU. Using float32 instead.")
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="cpu"
-                        )
-                elif device == "mps":
-                    if dtype == "float32":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="mps"
-                        )
-                    elif dtype == "float16":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="mps"
-                        ).half()
-                    elif dtype in ["bfloat16", "int8", "int4"]:
-                        print(f"{dtype} is not supported on MPS. Using float32 instead.")
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path, trust_remote_code=True, device_map="mps"
-                        ).half()
-                self.model = self.model.eval()
+            if dtype == "float16":
+                model_kwargs['torch_dtype'] = torch.float16
+            elif dtype == "bfloat16":
+                model_kwargs['torch_dtype'] = torch.bfloat16
+            elif dtype in ["int8", "int4"]:
+                model_kwargs['quantization_config'] = BitsAndBytesConfig(load_in_8bit=(dtype == "int8"), load_in_4bit=(dtype == "int4"))
+
+            config = AutoConfig.from_pretrained(model_name_or_path, **model_kwargs)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
+
+            if config.model_type == "t5":
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path, **model_kwargs)
+            elif config.model_type in ["gpt2", "gpt_refact", "gemma", "llama", "mistral", "qwen2", "chatglm"]:
+                self.model = AutoModelForCausalLM.from_pretrained(model_name_or_path, **model_kwargs)
+            else:
+                raise ValueError(f"Unsupported model type: {config.model_type}")
+            self.model = self.model.eval()
         return (
             self.model,
             self.tokenizer,
         )
 
     @classmethod
-    def IS_CHANGED(s):
+    def original_IS_CHANGED(s):
+        # 生成当前时间的哈希值
+        hash_value = hashlib.md5(str(datetime.datetime.now()).encode()).hexdigest()
+        return hash_value
+
+LLM_dir=os.path.join(current_dir_path, "model","LLM")
+# 获取LLM_dir文件夹中的所有文件夹
+LLM_list = [f for f in os.listdir(LLM_dir) if os.path.isdir(os.path.join(LLM_dir, f))]
+class easy_LLM_local_loader:
+    def __init__(self):
+        self.id = hash(str(self))
+        self.device = ""
+        self.dtype = ""
+        self.model_name_or_path = ""
+        self.model = ""
+        self.tokenizer = ""
+        self.is_locked = False
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name_or_path": (LLM_list, {"default": ""}),
+                "device": (
+                    ["auto", "cuda", "cpu", "mps"],
+                    {
+                        "default": "auto",
+                    },
+                ),
+                "dtype": (
+                    ["float32", "float16","bfloat16", "int8", "int4"],
+                    {
+                        "default": "float32",
+                    },
+                ),
+                "is_locked": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = (
+        "CUSTOM",
+        "CUSTOM",
+    )
+    RETURN_NAMES = (
+        "model",
+        "tokenizer",
+    )
+
+    FUNCTION = "chatbot"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+
+    def chatbot(self, model_name_or_path, device, dtype, is_locked=True):
+        model_name_or_path=os.path.join(LLM_dir,model_name_or_path)
+        self.is_locked = is_locked
+        if self.is_locked == False:
+            setattr(LLM_local_loader, "IS_CHANGED", LLM_local_loader.original_IS_CHANGED)
+        else:
+            # 如果方法存在，则删除
+            if hasattr(LLM_local_loader, "IS_CHANGED"):
+                delattr(LLM_local_loader, "IS_CHANGED")
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+
+        if (
+            self.device != device
+            or self.dtype != dtype
+            or self.model_name_or_path != model_name_or_path
+            or is_locked == False
+        ):
+            del self.model
+            del self.tokenizer
+            if self.device == "cuda":
+                torch.cuda.empty_cache()
+                gc.collect()
+            # 对于 CPU 和 MPS 设备，不需要清空 CUDA 缓存
+            elif self.device == "cpu" or self.device == "mps":
+                gc.collect()
+            self.model = ""
+            self.tokenizer = ""
+            self.model_name_or_path = model_name_or_path
+            self.device = device
+            self.dtype = dtype
+            model_kwargs = {
+                'device_map': device,
+            }
+
+            if dtype == "float16":
+                model_kwargs['torch_dtype'] = torch.float16
+            elif dtype == "bfloat16":
+                model_kwargs['torch_dtype'] = torch.bfloat16
+            elif dtype in ["int8", "int4"]:
+                model_kwargs['quantization_config'] = BitsAndBytesConfig(load_in_8bit=(dtype == "int8"), load_in_4bit=(dtype == "int4"))
+
+            config = AutoConfig.from_pretrained(model_name_or_path, **model_kwargs)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
+
+            if config.model_type == "t5":
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name_or_path, **model_kwargs)
+            elif config.model_type in ["gpt2", "gpt_refact", "gemma", "llama", "mistral", "qwen2", "chatglm"]:
+                self.model = AutoModelForCausalLM.from_pretrained(model_name_or_path, **model_kwargs)
+            else:
+                raise ValueError(f"Unsupported model type: {config.model_type}")
+            self.model = self.model.eval()
+        return (
+            self.model,
+            self.tokenizer,
+        )
+
+    @classmethod
+    def original_IS_CHANGED(s):
         # 生成当前时间的哈希值
         hash_value = hashlib.md5(str(datetime.datetime.now()).encode()).hexdigest()
         return hash_value
 
 
 class LLM_local:
-    original_IS_CHANGED = None
-
     def __init__(self):
         # 生成一个hash值作为id
         current_time = datetime.datetime.now()
@@ -1398,6 +1593,7 @@ class LLM_local:
         self.list = []
         self.added_to_list = False
         self.is_locked = "disable"
+        self.images = []
 
     @classmethod
     def INPUT_TYPES(s):
@@ -1418,13 +1614,13 @@ class LLM_local:
                     },
                 ),
                 "model_type": (
-                    ["llama", "GLM3", "Qwen", "llaVa"],
+                    ["LLM","LLM-GGUF", "VLM-GGUF", "VLM(testing)"],
                     {
-                        "default": "llama",
+                        "default": "LLM",
                     },
                 ),
                 "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "max_length": ("FLOAT", {"default": 512, "min": 256, "max": 128000, "step": 128}),
+                "max_length":("INT", {"default": 512, "min": 256, "max": 128000, "step": 128}),
                 "is_memory": (["enable", "disable"], {"default": "enable"}),
                 "is_locked": (["enable", "disable"], {"default": "disable"}),
                 "main_brain": (["enable", "disable"], {"default": "enable"}),
@@ -1529,9 +1725,6 @@ class LLM_local:
                 llm_tools_list.append(self.tool_data)
                 self.added_to_list = True
         self.is_locked = is_locked
-        if LLM_local.original_IS_CHANGED is None:
-            # 保存原始的IS_CHANGED方法的引用
-            LLM_local.original_IS_CHANGED = LLM_local.IS_CHANGED
         if self.is_locked == "disable":
             setattr(LLM_local, "IS_CHANGED", LLM_local.original_IS_CHANGED)
         else:
@@ -1568,9 +1761,19 @@ class LLM_local:
             )
         else:
             try:
-                if is_memory == "disable":
+                if is_memory == "disable" or "clear party memory" in user_prompt:
+                    self.images= []
                     with open(self.prompt_path, "w", encoding="utf-8") as f:
                         json.dump([{"role": "system", "content": system_prompt}], f, indent=4, ensure_ascii=False)
+                    if "clear party memory" in user_prompt:
+                        with open(self.prompt_path, "r", encoding="utf-8") as f:
+                            history = json.load(f)
+                        return (
+                            "party memory has been cleared, please ask me again, powered by LLM party!",
+                            str(history),
+                            llm_tools_json,
+                            None,
+                        )
                 with open(self.prompt_path, "r", encoding="utf-8") as f:
                     history = json.load(f)
                 history_temp = [history[0]]
@@ -1672,68 +1875,9 @@ class LLM_local:
                     )
 
                 # 获得model存放的设备
-                if model_type not in ["llaVa", "llama-guff"]:
+                if model_type not in ["VLM-GGUF", "LLM-GGUF"]:
                     device = next(model.parameters()).device
-                if model_type == "GLM3":
-                    if extra_parameters is not None and extra_parameters != {}:
-                        response, history = model.chat(
-                            tokenizer,
-                            user_prompt,
-                            history,
-                            temperature=temperature,
-                            max_length=max_length,
-                            role="user",
-                            **extra_parameters,
-                        )
-                    else:
-                        response, history = model.chat(
-                            tokenizer, user_prompt, history, temperature=temperature, max_length=max_length, role="user"
-                        )
-                    while type(response) == dict:
-                        if response["name"] == "interpreter":
-                            result = interpreter(str(response["content"]))
-                            if extra_parameters is not None and extra_parameters != {}:
-                                response, history = model.chat(
-                                    tokenizer,
-                                    result,
-                                    history=history,
-                                    temperature=temperature,
-                                    max_length=max_length,
-                                    role="observation",
-                                    **extra_parameters,
-                                )
-                            else:
-                                response, history = model.chat(
-                                    tokenizer,
-                                    result,
-                                    history=history,
-                                    temperature=temperature,
-                                    max_length=max_length,
-                                    role="observation",
-                                )
-                        else:
-                            result = dispatch_tool(response["name"], response["parameters"])
-                            print(result)
-                            if extra_parameters is not None and extra_parameters != {}:
-                                response, history = model.chat(
-                                    tokenizer,
-                                    result,
-                                    history=history,
-                                    temperature=temperature,
-                                    max_length=max_length,
-                                    role="observation",
-                                    **extra_parameters,
-                                )
-                            else:
-                                response, history = model.chat(
-                                    tokenizer,
-                                    result,
-                                    history=history,
-                                    temperature=temperature,
-                                    max_length=max_length,
-                                    role="observation",
-                                )
-                elif model_type in ["llama", "Qwen"]:
+                if model_type in ["LLM"]:
                     if extra_parameters is not None and extra_parameters != {}:
                         response, history = llm_chat(
                             model,
@@ -1783,20 +1927,18 @@ class LLM_local:
                                 role="observation",
                                 temperature=temperature,
                             )
-                elif model_type == "llaVa":
+                elif model_type == "VLM-GGUF":
                     if image is not None:
                         pil_image = ToPILImage()(image[0].permute(2, 0, 1))
                         # Convert the PIL image to a bytes buffer
                         buffer = io.BytesIO()
                         pil_image.save(buffer, format="PNG")  # You can change the format if needed
-                        # Get the bytes from the buffer
-                        image_bytes = buffer.getvalue()
                         # Encode the bytes to base64
-                        base64_string = f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+                        base64_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
                         user_content = {
                             "role": "user",
                             "content": [
-                                {"type": "image_url", "image_url": {"url": base64_string}},
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_string}"}},
                                 {"type": "text", "text": user_prompt},
                             ],
                         }
@@ -1806,7 +1948,6 @@ class LLM_local:
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
-                                stop=["<|eot_id|>", "[/INST]", "</s>", "[End Conversation]"],
                                 **extra_parameters,
                             )
                         else:
@@ -1814,7 +1955,6 @@ class LLM_local:
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
-                                stop=["<|eot_id|>", "[/INST]", "</s>", "[End Conversation]"],
                             )
                         response = f"{response['choices'][0]['message']['content']}"
                         print(response)
@@ -1828,18 +1968,92 @@ class LLM_local:
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
-                                stop=["<|eot_id|>", "[/INST]", "</s>", "[End Conversation]"],
+                                **extra_parameters,
                             )
                         else:
                             response = model.create_chat_completion(
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
-                                stop=["<|eot_id|>", "[/INST]", "</s>", "[End Conversation]"],
                             )
                         response = f"{response['choices'][0]['message']['content']}"
                         assistant_content = {"role": "assistant", "content": response}
                         history.append(assistant_content)
+                elif model_type == "LLM-GGUF":
+                        user_content = {"role": "user", "content": user_prompt}
+                        history.append(user_content)
+                        if extra_parameters is not None and extra_parameters != {}:
+                            response = model.create_chat_completion(
+                                messages=history,
+                                temperature=temperature,
+                                max_tokens=max_length,
+                                **extra_parameters,
+                            )
+                        else:
+                            response = model.create_chat_completion(
+                                messages=history,
+                                temperature=temperature,
+                                max_tokens=max_length,
+                            )
+                        response = f"{response['choices'][0]['message']['content']}"
+                        assistant_content = {"role": "assistant", "content": response}
+                        history.append(assistant_content)         
+                elif model_type in ["VLM(testing)"]:
+                    if image is not None:
+                        pil_image = ToPILImage()(image[0].permute(2, 0, 1))
+                        self.images.append(pil_image)
+                    if extra_parameters is not None and extra_parameters != {}:
+                        response, history = vlm_chat(
+                            model,
+                            tokenizer,
+                            self.images,
+                            user_prompt,
+                            history,
+                            device,
+                            max_length,
+                            temperature=temperature,
+                            **extra_parameters,
+                        )
+                    else:
+                        response, history = vlm_chat(
+                            model, tokenizer, self.images, user_prompt, history, device, max_length, temperature=temperature
+                        )
+                    # 正则表达式匹配
+                    pattern = r'\{\s*"tool":\s*"(.*?)",\s*"parameters":\s*\{(.*?)\}\s*\}'
+                    while re.search(pattern, response, re.DOTALL) != None:
+                        match = re.search(pattern, response, re.DOTALL)
+                        tool = match.group(1)
+                        parameters = match.group(2)
+                        json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
+                        history.append({"role": "assistant", "content": json_str})
+                        print("正在调用" + tool + "工具")
+                        parameters = json.loads("{" + parameters + "}")
+                        results = dispatch_tool(tool, parameters)
+                        print(results)
+                        if extra_parameters is not None and extra_parameters != {}:
+                            response, history = vlm_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                temperature=temperature,
+                                **extra_parameters,
+                            )
+                        else:
+                            response, history = vlm_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                role="observation",
+                                temperature=temperature,
+                            )         
                 print(response)
                 # 修改prompt.json文件
                 history_get = [history[0]]
@@ -1874,10 +2088,7 @@ class LLM_local:
 
                 history = str(historys)
                 global image_buffer
-                image_out = image_buffer.copy()
-                image_buffer = []
-                if image_out == []:
-                    image_out = None
+                image_out = image_buffer
                 return (
                     response,
                     history,
@@ -1894,60 +2105,12 @@ class LLM_local:
                 )
 
     @classmethod
-    def IS_CHANGED(s):
+    def original_IS_CHANGED(s):
         # 生成当前时间的哈希值
         hash_value = hashlib.md5(str(datetime.datetime.now()).encode()).hexdigest()
         return hash_value
 
 
-class LLavaLoader:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model_name": ("STRING", {"default": ""}),
-                "ckpt_path": ("STRING", {"default": ""}),
-                "clip_path": ("STRING", {"default": ""}),
-                "max_ctx": ("INT", {"default": 2048, "min": 300, "max": 100000, "step": 64}),
-                "gpu_layers": ("INT", {"default": 27, "min": 0, "max": 100, "step": 1}),
-                "n_threads": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
-            }
-        }
-
-    RETURN_TYPES = ("CUSTOM",)
-    RETURN_NAMES = ("model",)
-    FUNCTION = "load_llava_checkpoint"
-
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
-
-    def load_llava_checkpoint(self, model_name, ckpt_path, max_ctx, gpu_layers, n_threads, clip_path):
-        from llama_cpp import Llama
-        from llama_cpp.llama_chat_format import Llava15ChatHandler
-
-        if ckpt_path != "" and clip_path != "":
-            model_name = ""
-        if model_name in config_key:
-            ckpt_path = config_key[model_name].get("ckpt_path")
-            clip_path = config_key[model_name].get("clip_path")
-        clip = Llava15ChatHandler(clip_model_path=clip_path, verbose=False)
-        llm = Llama(
-            model_path=ckpt_path,
-            chat_handler=clip,
-            offload_kqv=True,
-            f16_kv=True,
-            use_mlock=False,
-            embedding=False,
-            n_batch=1024,
-            last_n_tokens_size=1024,
-            verbose=True,
-            seed=42,
-            n_ctx=max_ctx,
-            n_gpu_layers=gpu_layers,
-            n_threads=n_threads,
-            logits_all=True,
-            echo=False,
-        )
-        return (llm,)
 
 
 NODE_CLASS_MAPPINGS = {
@@ -1956,7 +2119,8 @@ NODE_CLASS_MAPPINGS = {
     "LLM_api_loader": LLM_api_loader,
     "genai_api_loader":genai_api_loader,
     "LLM_local_loader": LLM_local_loader,
-    "LLavaLoader": LLavaLoader,
+    "easy_LLM_local_loader": easy_LLM_local_loader,
+    "easy_LLM_api_loader":easy_LLM_api_loader,
     "load_ebd":load_ebd,
     "embeddings_function": embeddings_function,
     "load_file": load_file,
@@ -1982,7 +2146,6 @@ NODE_CLASS_MAPPINGS = {
     "custom_persona": custom_persona,
     "start_workflow": start_workflow,
     "end_workflow": end_workflow,
-    "new_interpreter_tool": new_interpreter_tool,
     "CLIPTextEncode_party": CLIPTextEncode_party,
     "KSampler_party": KSampler_party,
     "VAEDecode_party": VAEDecode_party,
@@ -2050,6 +2213,11 @@ NODE_CLASS_MAPPINGS = {
     "str2float":str2float,
     "json_iterator":json_iterator,
     "Lorebook":Lorebook,
+    "text_writing":text_writing,
+    "str2int":str2int,
+    "any2str":any2str,
+    "start_anything":start_anything,
+    "end_anything":end_anything,
 }
 
 
@@ -2060,12 +2228,13 @@ if lang_config=="en_US" or lang_config=="zh_CN":
     lang=lang_config
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "LLM": "API大语言模型",
-        "LLM_local": "本地大语言模型",
-        "LLM_api_loader": "API大语言模型加载器",
-        "genai_api_loader":"Gemini API加载器",
-        "LLM_local_loader": "本地大语言模型加载器",
-        "LLavaLoader": "LVM加载器",
+        "LLM": "API LLM通用链路",
+        "LLM_local": "本地LLM通用链路",
+        "LLM_api_loader": "API LLM加载器",
+        "easy_LLM_api_loader": "简易API LLM加载器",
+        "genai_api_loader":"Gemini API LLM加载器",
+        "LLM_local_loader": "本地LLM加载器",
+        "easy_LLM_local_loader": "简易本地LLM加载器",
         "load_ebd": "加载词嵌入",
         "embeddings_function": "词向量检索",
         "load_file": "加载文件",
@@ -2091,7 +2260,6 @@ if lang == "zh_CN":
         "custom_persona": "自定义面具",
         "start_workflow": "开始工作流",
         "end_workflow": "结束工作流",
-        "new_interpreter_tool": "(危险！)万能解释器工具",
         "CLIPTextEncode_party": "CLIP文本编码器",
         "KSampler_party": "KSampler采样器",
         "VAEDecode_party": "VAEDecode解码器",
@@ -2114,7 +2282,7 @@ if lang == "zh_CN":
         "feishu": "发送到飞书",
         "substring": "提取字符串",
         "openai_tts": "OpenAI语音合成",
-        "load_name": "加载模型名称",
+        "load_name": "加载config.ini中的模型名称",
         "omost_decode": "omost解码器",
         "omost_setting": "omost设置",
         "keyword_tool": "搜索关键词工具",
@@ -2135,7 +2303,7 @@ if lang == "zh_CN":
         "bing_loader": "Bing搜索加载器",
         "api_function": "API函数",
         "parameter_function": "参数字典函数",
-        "get_string": "获取字符串",
+        "get_string": "输入字符串",
         "parameter_combine": "参数字典组合",
         "parameter_combine_plus": "超大参数字典组合",
         "list_append": "列表追加",
@@ -2159,16 +2327,21 @@ if lang == "zh_CN":
         "str2float":"字符串转浮点数",
         "json_iterator":"JSON迭代器",
         "Lorebook":"Lorebook传说书",
+        "text_writing":"文本写入",
+        "str2int":"字符串转整数",
+        "any2str":"任意类型转字符串",
+        "start_anything":"开始任意",
+        "end_anything": "结束任意",
     }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "LLM": "API Large Language Model",
-        "LLM_local": "Local Large Language Model",
-        "LLM_api_loader": "API Large Language Model Loader",
-        "genai_api_loader":"Gemini API Loader",
-        "LLM_local_loader": "Local Large Language Model Loader",
-        "LLavaLoader": "LVM Loader",
-        "llama_guff_loader": "llama-guff Loader",
+        "LLM": "API LLM general link",
+        "LLM_local": "Local LLM general link",
+        "LLM_api_loader": "API LLM Loader",
+        "easy_LLM_api_loader": "Easy API LLM Loader",
+        "genai_api_loader":"Gemini API LLM Loader",
+        "LLM_local_loader": "Local LLM Loader",
+        "easy_LLM_local_loader": "Easy Local LLM Loader",
         "load_ebd": "Load Embeddings",
         "embeddings_function": "Word Vector Search",
         "load_file": "Load File",
@@ -2194,7 +2367,6 @@ else:
         "custom_persona": "Custom Persona",
         "start_workflow": "Start Workflow",
         "end_workflow": "End Workflow",
-        "new_interpreter_tool": "(Danger!) Omnipotent Interpreter Tool",
         "CLIPTextEncode_party": "CLIP Text Encoder",
         "KSampler_party": "KSampler",
         "VAEDecode_party": "VAEDecode",
@@ -2217,7 +2389,7 @@ else:
         "feishu": "Send to Feishu",
         "substring": "Extract Substring",
         "openai_tts": "OpenAI TTS",
-        "load_name": "Load Model Name",
+        "load_name": "Load Model Name in config.ini",
         "omost_decode": "omost Decoder",
         "omost_setting": "omost Setting",
         "keyword_tool": "Search Keyword Tool",
@@ -2238,7 +2410,7 @@ else:
         "bing_loader": "Bing Image Loader",
         "api_function": "API Function",
         "parameter_function": "Parameter Dictionary Function",
-        "get_string": "Get String",
+        "get_string": "Input String",
         "parameter_combine": "Parameter Dictionary Combine",
         "parameter_combine_plus": "Large Parameter Dictionary Combine",
         "list_append": "List Append",
@@ -2262,6 +2434,11 @@ else:
         "str2float": "String to Float",
         "json_iterator": "JSON Iterator",
         "Lorebook":"Lore book",
+        "text_writing":"Text write",
+        "str2int": "String to Integer",
+        "any2str": "Any to String",
+        "start_anything": "Start Anything",
+        "end_anything": "End Anything",
     }
 
 

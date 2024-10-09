@@ -1,8 +1,10 @@
 import json
 import os
+import re
 
+from bs4 import BeautifulSoup
 import pandas as pd
-from charamel import Detector
+import charset_normalizer
 import docx2txt
 import numpy as np
 import openpyxl
@@ -12,7 +14,7 @@ import requests
 import torch
 import xlrd
 from PIL import Image, ImageOps, ImageSequence
-
+from markdownify import markdownify as md
 from ..config import current_dir_path
 
 file_path = os.path.join(current_dir_path, "file")
@@ -21,16 +23,16 @@ programming_languages_extensions = [".py", ".js", ".java", ".c", ".cpp", ".html"
 
 def read_one(path):
     text = ""
-    if path.endswith(".docx"):
+    if path.endswith(".docx") or path.endswith(".DOCX"):
         text += docx2txt.process(path)
-    elif path.endswith(".md"):
+    elif path.endswith(".md") or path.endswith(".MD"):
         with open(path, "r", encoding="utf-8") as f:
             text += f.read()
-    elif path.endswith(".pdf"):
+    elif path.endswith(".pdf") or path.endswith(".PDF"):
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
                 text += page.extract_text()
-    elif path.endswith(".xlsx"):
+    elif path.endswith(".xlsx") or path.endswith(".XLSX"):
         workbook = openpyxl.load_workbook(path)
         for sheet in workbook.worksheets:
             # 检查工作表是否至少有一行数据
@@ -54,7 +56,7 @@ def read_one(path):
                     else:
                         # 如果整行都是空的，则停止读取当前工作表
                         break
-    elif path.endswith(".xls"):
+    elif path.endswith(".xls") or path.endswith(".XLS"):
         workbook = xlrd.open_workbook(path)
         for sheet_index in range(workbook.nsheets):
             sheet = workbook.sheet_by_index(sheet_index)
@@ -65,18 +67,19 @@ def read_one(path):
                 text += "| " + " | ".join(["---"] * sheet.ncols) + " |\n"  # 添加分隔符
                 for row_num in range(1, sheet.nrows):
                     text += "| " + " | ".join([str(cell) for cell in sheet.row_values(row_num)]) + " |\n"
-    elif path.endswith(".csv"):
+    elif path.endswith(".csv") or path.endswith(".CSV"):
         # 检测文件编码
-        detector = Detector()
         with open(path, "rb") as file:
             content = file.read()
-        encoding = detector.detect(content)
+        result = charset_normalizer.from_bytes(content)
+        encoding = result.best().encoding if result else 'utf-8'
+        # 读取 CSV 文件
         df = pd.read_csv(path, encoding=encoding)
         text += df.to_markdown(index=True)
-    elif path.endswith(".txt"):
+    elif path.endswith(".txt") or path.endswith(".TXT"):
         with open(path, "r", encoding="utf-8") as f:
             text += f.read()
-    elif path.endswith(".json"):
+    elif path.endswith(".json") or path.endswith(".JSON"):
         with open(path, "r", encoding="utf-8") as f:
             text += json.dumps(json.load(f), ensure_ascii=False, indent=4)
     elif any(path.endswith(extension) for extension in programming_languages_extensions):
@@ -181,10 +184,9 @@ class load_url:
     CATEGORY = "大模型派对（llm_party）/加载器（loader）"
 
     def file(self, url, with_jina=True, is_enable=True):
-        if is_enable == False:
+        if not is_enable:
             return (None,)
         try:
-
             jina = "https://r.jina.ai/"
             if with_jina:
                 url = jina + url
@@ -192,12 +194,26 @@ class load_url:
             response = requests.get(url, timeout=10)
             response.raise_for_status()  # 确保请求成功
 
-            # 设置响应内容的编码，确保文本不会出现编码问题
-            response.encoding = response.apparent_encoding
+            # 使用 charset_normalizer 检测编码
+            detected_encoding = charset_normalizer.detect(response.content)['encoding']
+            response.encoding = detected_encoding if detected_encoding else 'utf-8'
         except requests.exceptions.RequestException as e:
             print(f"请求发生错误: {e}")
             return (None,)
+        
         out = response.text
+        print(out)  # Debugging: Check the HTML content
+        
+        if not with_jina:
+            # 使用 BeautifulSoup 解析 HTML
+            soup = BeautifulSoup(out, 'html.parser')
+            # 提取主要内容
+            main_content = soup.get_text()
+            # 将 HTML 转换为 Markdown
+            out = md(main_content, convert=['p', 'h1', 'h2', 'h3', 'a', 'img'], heading_style="ATX", bullets="*+-", strong_em_symbol="ASTERISK")
+            # 去掉多余的换行符
+            out = re.sub(r'\n+', '\n', out)
+        
         return (out,)
 
 

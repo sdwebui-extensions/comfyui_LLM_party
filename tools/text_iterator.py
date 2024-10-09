@@ -21,23 +21,24 @@ class text_iterator:
                 "file_content": ("STRING", {"default": ""}),
                 "is_enable": ("BOOLEAN", {"default": True}),
                 "is_reload": ("BOOLEAN", {"default": False}),
-                "iterator_mode": (["sequential","random","Infinite"], {"default": "sequential"}),
+                "iterator_mode": (["sequential","random","Infinite", "sequential_flagout"], {"default": "sequential"}),
             },
             "optional": {"chunk_size": ("INT", {"default": 1024}), "chunk_overlap": ("INT", {"default": 0})},
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("file_content",)
+    RETURN_TYPES = ("STRING", "BOOLEAN")
+    RETURN_NAMES = ("file_content", "is_end")
 
     FUNCTION = "file"
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/迭代器（iterator）"
 
     def file(self, file_content,iterator_mode, chunk_size=1024, chunk_overlap=0, is_enable=True, is_reload=False):
+        flag_is_end = False
         if not is_enable:
-            return (None,)
+            return (None, flag_is_end,)
         if (
             self.file_content != file_content
             or is_reload == True
@@ -59,16 +60,48 @@ class text_iterator:
             if iterator_mode == "sequential":
                 signal.signal(signal.SIGINT, interrupt_handler)
                 signal.raise_signal(signal.SIGINT)  # 直接中断进程
+        if self.index == text_len - 1 and iterator_mode == "sequential_flagout":
+            flag_is_end = True
         out = self.text_splitter.split_text(self.file_content)[self.index]
         print("当前索引：", self.index)
         print("当前输出：", out)
-        if iterator_mode == "sequential" or iterator_mode =="Infinite":
+        if iterator_mode == "sequential" or iterator_mode =="Infinite" or iterator_mode == "sequential_flagout":
             self.index += 1
         elif iterator_mode == "random":
             self.index = random.randint(0, text_len - 1)
-        return (out,)
+        return (out, flag_is_end,)
 
     @classmethod
     def IS_CHANGED(self, s):
         self.record = self.index
         return self.record
+
+class text_writing:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("STRING", {"default": ""}),
+                "file_path": ("STRING", {"default": ""}),
+                "mode": (["a","w"], {"default": "a"}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("file_path",)
+
+    FUNCTION = "file"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "大模型派对（llm_party）/迭代器（iterator）"
+
+    def file(self, text, file_path, mode="w"):
+        try:
+            # 根据模式打开文件，并指定编码为UTF-8
+            with open(file_path, mode, encoding="utf-8") as f:
+                f.write(text+"\n")
+        except Exception as e:
+            # 捕获并处理异常
+            raise ValueError(f"写入文件失败: {e}")
+        return (file_path,)

@@ -278,7 +278,8 @@ class workflow_tool:
         return {
             "required": {
                 "is_enable": ("BOOLEAN", {"default": True}),
-                "workflow_name": ("STRING", {"multiline": True, "default": "测试画画app.json,绘图app.json"}),
+                "workflow_name": ("STRING", {"multiline": True, "default": "写诗.json,draw.json"}),
+                "workflow_description": ("STRING", {"multiline": True, "default": "写诗.json是一个根据用户输入的信息生成诗歌的工具，draw.json is a tool that generates images based on user prompt."}),
             },
         }
 
@@ -291,7 +292,7 @@ class workflow_tool:
 
     CATEGORY = "大模型派对（llm_party）/工具（tools）"
 
-    def workflow(self, workflow_name, is_enable="enable"):
+    def workflow(self, workflow_name,workflow_description, is_enable="enable"):
         if is_enable == "disable":
             return (None,)
         output = [
@@ -305,22 +306,14 @@ class workflow_tool:
                         "properties": {
                             "workflow_name": {
                                 "type": "string",
-                                "description": f"请从[{str(workflow_name)}]中选择json文件名作为要调用的workflow_name",
+                                "description": f"请从[{str(workflow_name)}]中选择json文件名作为要调用的workflow_name。这些工作流分别的使用说明为：{workflow_description}。该参数用于指定要调用的workflow文件名，是一个带.json后缀名的文件名。",
                             },
                             "user_prompt": {
                                 "type": "string",
                                 "description": "用户输入的信息",
                             },
-                            "positive_prompt": {
-                                "type": "string",
-                                "description": "正面提示",
-                            },
-                            "negative_prompt": {
-                                "type": "string",
-                                "description": "负面提示",
-                            },
                         },
-                        "required": ["workflow_name"],
+                        "required": ["workflow_name","user_prompt"]
                     },
                 },
             }
@@ -331,8 +324,6 @@ class workflow_tool:
 
 def work_flow(
     user_prompt="",
-    positive_prompt="",
-    negative_prompt="",
     workflow_name="测试画画app.json",
 ):
     # 用re去掉workflow_name字符串中的'['、']'字符
@@ -344,10 +335,7 @@ def work_flow(
     # 获取main.py的绝对路径
     root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "main.py"))
 
-    # 构建在新控制台窗口中执行main.py的命令
-    # 使用'cmd /c'在新窗口中执行命令，并且'cmd /k'保持窗口打开
-    command = f'cmd /c start cmd /k "{interpreter} {root_path} --port 8190"'
-    check_port_and_execute_bat(8190, command)
+    execute_command_in_new_window(interpreter, root_path, 8190)
     global current_dir_path
     WF_path = os.path.join(current_dir_path, "workflow_api", workflow_name)
     with open(WF_path, "r", encoding="utf-8") as f:
@@ -359,10 +347,26 @@ def work_flow(
         # 如果p的class_type是start_workflow
         if prompt[p]["class_type"] == "start_workflow":
             prompt[p]["inputs"]["user_prompt"] = user_prompt
-            prompt[p]["inputs"]["positive_prompt"] = positive_prompt
-            prompt[p]["inputs"]["negative_prompt"] = negative_prompt
 
     ws = websocket.WebSocket()
     ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
     images, res = get_all(ws, prompt)
-    return res, images
+    img_out = []
+    if images == {}:
+        images = None
+    elif images is not None:
+        for node_id in images:
+            for image_data in images[node_id]:
+                img = Image.open(io.BytesIO(image_data))
+                img = ImageOps.exif_transpose(img)
+                if img.mode == "I":
+                    img = img.point(lambda i: i * (1 / 256)).convert("L")
+                image = img.convert("RGB")
+                image = np.array(image).astype(np.float32) / 255.0
+                image = torch.from_numpy(image).unsqueeze(0)
+                img_out.append(image)
+    if len(img_out) > 1:
+        img_out = torch.cat(img_out, dim=0)
+    elif img_out:
+        img_out = img_out[0]
+    return res, img_out

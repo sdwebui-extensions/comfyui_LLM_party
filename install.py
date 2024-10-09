@@ -39,14 +39,17 @@ def latest_lamacpp(system_info):
 
 
 def install_llama_package(package_name, custom_command=None):
-    if not package_is_installed(package_name):
-        print(f"Installing {package_name}...")
-        command = [sys.executable, "-m", "pip", "install", package_name, "--no-cache-dir"]
-        if custom_command:
-            command += custom_command.split()
-        subprocess.check_call(command)
-    else:
-        print(f"{package_name} is already installed.")
+    try:
+        if not package_is_installed(package_name):
+            print(f"Installing {package_name}...")
+            command = [sys.executable, "-m", "pip", "install", package_name, "--no-cache-dir"]
+            if custom_command:
+                command += custom_command.split()
+            subprocess.check_call(command)
+        else:
+            print(f"{package_name} is already installed.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to install {package_name}: {e}")
 
 
 def package_is_installed(package_name):
@@ -66,24 +69,29 @@ def extract_version(tag_name):
     return None
 
 def install_llama(system_info):
-    imported = package_is_installed("llama-cpp-python") or package_is_installed("llama_cpp")
-    if imported:
-        print("llama-cpp installed")
-    else:
-        avx = "AVX2" if system_info["avx2"] else "AVX"
-        
-        if system_info.get("gpu", False):
-            cuda_version = system_info["cuda_version"]
-            custom_command = f"--force-reinstall --no-deps --index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/{cuda_version}"
-            print("cuda " + custom_command)
-        elif system_info.get("metal", False):
-            custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/basic/cpu"
-            print("mps " + custom_command)
+    try:
+        imported = package_is_installed("llama-cpp-python") or package_is_installed("llama_cpp")
+        if imported:
+            print("llama-cpp installed")
         else:
-            custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/cpu"
-            print("cpu " + custom_command)
-        
-        install_llama_package("llama-cpp-python", custom_command=custom_command)
+            avx = "AVX2" if system_info["avx2"] else "AVX"
+            
+            if system_info.get("gpu", False):
+                cuda_version = system_info["cuda_version"]
+                if cuda_version =="cu124":
+                    cuda_version = "cu122"
+                custom_command = f"--force-reinstall --no-deps --index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/{cuda_version}"
+                print("cuda " + custom_command)
+            elif system_info.get("metal", False):
+                custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/basic/cpu"
+                print("mps " + custom_command)
+            else:
+                custom_command = f"--prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/{avx}/cpu"
+                print("cpu " + custom_command)
+            
+            install_llama_package("llama-cpp-python", custom_command=custom_command)
+    except Exception as e:
+        print(f"Error installing llama-cpp-python: {e}")
 
 
 
@@ -278,12 +286,3 @@ def manage_discord_packages():
     #     print("py-cord[voice] is already installed")
 
 
-# install_portaudio()
-check_and_uninstall_websocket()
-
-# 调用函数
-system_info = get_system_info()
-# install_llama(system_info)
-init_temp()
-# 调用函数
-manage_discord_packages()

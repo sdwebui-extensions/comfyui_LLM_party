@@ -1,102 +1,7 @@
 {
-  "last_node_id": 23,
-  "last_link_id": 37,
+  "last_node_id": 24,
+  "last_link_id": 39,
   "nodes": [
-    {
-      "id": 11,
-      "type": "show_text_party",
-      "pos": [
-        1403,
-        264
-      ],
-      "size": {
-        "0": 454.6876220703125,
-        "1": 290.2985534667969
-      },
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 37,
-          "widget": {
-            "name": "text"
-          },
-          "label": "text"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": null,
-          "shape": 6,
-          "label": "STRING"
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "show_text_party"
-      },
-      "widgets_values": [
-        "",
-        "你好👋！我是人工智能助手 ChatGLM3-6B，很高兴见到你，欢迎问我任何问题。"
-      ],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 22,
-      "type": "LLM_local_loader",
-      "pos": [
-        513,
-        241
-      ],
-      "size": {
-        "0": 315,
-        "1": 222
-      },
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "model",
-          "type": "CUSTOM",
-          "links": [
-            35
-          ],
-          "shape": 3,
-          "label": "model",
-          "slot_index": 0
-        },
-        {
-          "name": "tokenizer",
-          "type": "CUSTOM",
-          "links": [
-            36
-          ],
-          "shape": 3,
-          "label": "tokenizer",
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LLM_local_loader"
-      },
-      "widgets_values": [
-        "GLM",
-        "GLM3",
-        "",
-        "",
-        "auto",
-        "float32",
-        true
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
     {
       "id": 23,
       "type": "LLM_local",
@@ -115,13 +20,13 @@
         {
           "name": "model",
           "type": "CUSTOM",
-          "link": 35,
+          "link": 38,
           "label": "model"
         },
         {
           "name": "tokenizer",
           "type": "CUSTOM",
-          "link": 36,
+          "link": 39,
           "label": "tokenizer"
         },
         {
@@ -174,9 +79,9 @@
           "links": [
             37
           ],
+          "slot_index": 0,
           "shape": 3,
-          "label": "assistant_response",
-          "slot_index": 0
+          "label": "assistant_response"
         },
         {
           "name": "history",
@@ -204,9 +109,9 @@
         "Node name for S&R": "LLM_local"
       },
       "widgets_values": [
-        "你一个强大的人工智能助手。",
-        "你好",
-        "GLM3",
+        "你是一个可爱的小兔娘",
+        "你好，你是谁哇",
+        "LLM",
         0.7,
         512,
         "enable",
@@ -220,25 +125,99 @@
         "",
         true
       ]
+    },
+    {
+      "id": 24,
+      "type": "LLM_local_loader",
+      "pos": [
+        540,
+        250
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "model",
+          "type": "CUSTOM",
+          "links": [
+            38
+          ],
+          "slot_index": 0,
+          "shape": 3,
+          "label": "model"
+        },
+        {
+          "name": "tokenizer",
+          "type": "CUSTOM",
+          "links": [
+            39
+          ],
+          "slot_index": 1,
+          "shape": 3,
+          "label": "tokenizer"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LLM_local_loader"
+      },
+      "widgets_values": [
+        "D:\\AI\\mychat\\model\\Qwen2-1.5B",
+        "auto",
+        "float32",
+        true
+      ]
+    },
+    {
+      "id": 11,
+      "type": "show_text_party",
+      "pos": [
+        1420,
+        240
+      ],
+      "size": {
+        "0": 450,
+        "1": 290
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 37,
+          "widget": {
+            "name": "text"
+          },
+          "label": "text"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null,
+          "shape": 6,
+          "label": "STRING"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "show_text_party"
+      },
+      "widgets_values": [
+        "",
+        "*blushes slightly* My name is Alice, and I'm a fairy. I'm a very powerful fairy, but I'm also very mischievous. I love to play pranks on others, and I have a very mischievous sense of humor. I'm also very good at reading minds, and I can use my magic to make people feel good or bad."
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
     }
   ],
   "links": [
-    [
-      35,
-      22,
-      0,
-      23,
-      0,
-      "CUSTOM"
-    ],
-    [
-      36,
-      22,
-      1,
-      23,
-      1,
-      "CUSTOM"
-    ],
     [
       37,
       23,
@@ -246,6 +225,22 @@
       11,
       0,
       "STRING"
+    ],
+    [
+      38,
+      24,
+      0,
+      23,
+      0,
+      "CUSTOM"
+    ],
+    [
+      39,
+      24,
+      1,
+      23,
+      1,
+      "CUSTOM"
     ]
   ],
   "groups": [],
@@ -253,10 +248,10 @@
   "extra": {
     "ds": {
       "scale": 1,
-      "offset": {
-        "0": -450.4682339209155,
-        "1": -10.38038266475165
-      }
+      "offset": [
+        -455.5588030162946,
+        47.36551725746442
+      ]
     }
   },
   "version": 0.4

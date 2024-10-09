@@ -178,3 +178,7 @@ discord_monitor_await.py
 discord_bot_await.py
 meeting*
 *temp*
+output
+chatTTS_node.py
+file_control.py
+new_interpreter.py
