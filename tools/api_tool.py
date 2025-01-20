@@ -25,7 +25,7 @@ class api_box:
         else:
             out = "API请求失败"
 
-        return (out,)
+        return out
 
 
 api_boxes = {}
@@ -75,7 +75,7 @@ class api_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/自动化（Automation）"
 
     def read_web(self, url, description, parameters, api_key="", is_enable=True):
         if is_enable == False:
@@ -133,7 +133,7 @@ class api_function:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/APP链接（app link）"
 
     def api(self, url, parameters, api_key="", request_type="get", timeout=60):
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
@@ -182,7 +182,7 @@ class parameter_function:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/APP链接（app link）"
 
     def parameter(self, key="", value=""):
         out = {key: value}

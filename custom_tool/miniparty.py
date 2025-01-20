@@ -9,6 +9,7 @@ import requests
 from PIL import Image
 import numpy as np
 import openai
+from openai import AzureOpenAI
 import base64
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import torch
@@ -51,13 +52,13 @@ class mini_party:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
@@ -100,7 +101,9 @@ class mini_party:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -108,7 +111,19 @@ class mini_party:
             {"role": "system", "content": prompt},
             {"role": "user", "content": input_str}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                         )
@@ -132,13 +147,13 @@ class mini_translate:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
@@ -183,7 +198,9 @@ class mini_translate:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -210,7 +227,19 @@ class mini_translate:
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": chunk}
             ]
-            response = openai.chat.completions.create(
+            openai_client = openai
+            if "openai.azure.com" in openai.base_url:
+                # 获取API版本
+                api_version = openai.base_url.split("=")[-1].split("/")[0]
+                # 获取azure_endpoint
+                azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+                azure = AzureOpenAI(
+                    api_key= openai.api_key,
+                    api_version=api_version,
+                    azure_endpoint=azure_endpoint,
+                )
+                openai_client = azure
+            response = openai_client.chat.completions.create(
                                 model=model_name,
                                 messages=history,
                             )
@@ -231,13 +260,13 @@ class mini_error_correction:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
@@ -279,7 +308,9 @@ class mini_error_correction:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -287,7 +318,7 @@ class mini_error_correction:
 输出格式为json，格式如下：
 {{
     "input_str": "输入的文字，用** **将错误的地方括起来",
-    "output_str": "修改后的文字，保留原格式",
+    "output_str": "修改后的文字，保留原格式。",
     "error":"你修改的部分，如果没有错误则为空字符串。如果有错误，则用无序列表的形式列出错误"
 }}
 
@@ -298,7 +329,7 @@ class mini_error_correction:
     "error":"- 向前发展 -> 提高\n- 挑起 -> 承担\n"
 }}
 
-从现在开始，请对我的输入进行纠错。
+从现在开始，请对我的输入进行纠错。注意！input_str里要用** **将错误的地方括起来；output_str里要保留原格式，不用加** **括起来；如果有错误，则用无序列表的形式列出错误。
         """
 
         # 将file_content用RecursiveCharacterTextSplitter分割
@@ -313,7 +344,19 @@ class mini_error_correction:
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": chunk}
             ]
-            response = openai.chat.completions.create(
+            openai_client = openai
+            if "openai.azure.com" in openai.base_url:
+                # 获取API版本
+                api_version = openai.base_url.split("=")[-1].split("/")[0]
+                # 获取azure_endpoint
+                azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+                azure = AzureOpenAI(
+                    api_key= openai.api_key,
+                    api_version=api_version,
+                    azure_endpoint=azure_endpoint,
+                )
+                openai_client = azure
+            response = openai_client.chat.completions.create(
                                 model=model_name,
                                 messages=history,
                                 response_format={"type": "json_object"},
@@ -322,7 +365,7 @@ class mini_error_correction:
             output = json.loads(output)
             input_text += output["input_str"]
             output_text += output["output_str"]
-            error += output["error"]
+            error += output["error"] + "\n"
             time.sleep(0.5)
         return (input_text,output_text,error,)
 
@@ -340,13 +383,13 @@ class mini_summary:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
@@ -388,7 +431,9 @@ class mini_summary:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -412,7 +457,19 @@ class mini_summary:
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": chunk}
             ]
-            response = openai.chat.completions.create(
+            openai_client = openai
+            if "openai.azure.com" in openai.base_url:
+                # 获取API版本
+                api_version = openai.base_url.split("=")[-1].split("/")[0]
+                # 获取azure_endpoint
+                azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+                azure = AzureOpenAI(
+                    api_key= openai.api_key,
+                    api_version=api_version,
+                    azure_endpoint=azure_endpoint,
+                )
+                openai_client = azure
+            response = openai_client.chat.completions.create(
                                 model=model_name,
                                 messages=history,
                             )
@@ -426,7 +483,19 @@ class mini_summary:
             {"role": "system", "content": sys_prompt2},
             {"role": "user", "content": output_text}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                         )      
@@ -446,13 +515,13 @@ class mini_story:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
@@ -494,7 +563,9 @@ class mini_story:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -525,7 +596,19 @@ class mini_story:
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": theme}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                             response_format={"type": "json_object"},
@@ -552,13 +635,13 @@ class mini_ocr:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "imgbb_api_key":(
@@ -660,7 +743,9 @@ class mini_ocr:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -721,7 +806,19 @@ class mini_ocr:
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": img_json}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                             response_format={"type": "json_object"},
@@ -731,7 +828,19 @@ class mini_ocr:
             {"role": "system", "content": "将这个包含文字坐标信息的json转化成markdown格式，请参照json中的文字位置坐标，安排好markdown中的文字位置，并输出markdown格式的文本。"},
             {"role": "user", "content": output}
         ]
-        response2 = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response2 = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                         )
@@ -751,16 +860,17 @@ class mini_sd_prompt:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
+                "seed": ("INT", {"default": 42,}),
             },
         }
 
@@ -780,6 +890,7 @@ class mini_sd_prompt:
         base_url=None,
         api_key=None,
         is_enable=True,
+        seed=42,
     ):
         if not is_enable:
             return (None,)
@@ -799,7 +910,9 @@ class mini_sd_prompt:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -867,10 +980,23 @@ Stable Diffusion是一款利用深度学习的文生图模型，支持通过使�
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": prompt}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
                             response_format={"type": "json_object"},
+                            seed=seed,
                         )
         output = response.choices[0].message.content
         output = json.loads(output)
@@ -891,16 +1017,17 @@ class mini_flux_prompt:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
+                "seed": ("INT", {"default": 42,}),
             },
         }
 
@@ -920,6 +1047,7 @@ class mini_flux_prompt:
         base_url=None,
         api_key=None,
         is_enable=True,
+        seed=42,
     ):
         if not is_enable:
             return (None,)
@@ -939,7 +1067,9 @@ class mini_flux_prompt:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -982,9 +1112,22 @@ FLUX是一款利用深度学习的文生图模型，支持通过使用 自然语
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": prompt}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
+                            seed=seed,
                         )
         flux_prompt = response.choices[0].message.content
         return (flux_prompt,)
@@ -1002,13 +1145,13 @@ class mini_sd_tag:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "imgbb_api_key":(
@@ -1018,6 +1161,7 @@ class mini_sd_tag:
                     }
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
+                "seed": ("INT", {"default": 42,}),
             },
         }
 
@@ -1038,6 +1182,7 @@ class mini_sd_tag:
         api_key=None,
         is_enable=True,
         imgbb_api_key=None,
+        seed=42,
     ):
         if not is_enable:
             return (None,)
@@ -1057,7 +1202,9 @@ class mini_sd_tag:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
@@ -1144,9 +1291,22 @@ a girl, beautiful detailed eyes, stars in the eyes, messy floating hair, colored
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": img_json}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
+                            seed=seed,
                         )
         tags = response.choices[0].message.content
         return (tags,)
@@ -1164,13 +1324,13 @@ class mini_flux_tag:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
                 "imgbb_api_key":(
@@ -1180,6 +1340,7 @@ class mini_flux_tag:
                     }
                 ),
                 "is_enable": ("BOOLEAN", {"default": True,}),
+                "seed": ("INT", {"default": 42,}),
             },
         }
 
@@ -1200,6 +1361,7 @@ class mini_flux_tag:
         api_key=None,
         is_enable=True,
         imgbb_api_key=None,
+        seed=42,
     ):
         if not is_enable:
             return (None,)
@@ -1219,13 +1381,12 @@ class mini_flux_tag:
         elif api_keys.get("base_url") != "":
             openai.base_url = api_keys.get("base_url")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
         if openai.base_url != "":
             if openai.base_url[-1] != "/":
                 openai.base_url = openai.base_url + "/"
-
-        if not openai.api_key:
-            return ("请输入API_KEY",)
         sys_prompt = f'''# FLUX prompt 助理
 
 你来充当一位图片反推prompt助理。
@@ -1307,13 +1468,168 @@ A majestic, emerald-scaled dragon with glowing amber eyes, wings outstretched, s
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": img_json}
         ]
-        response = openai.chat.completions.create(
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
                             model=model_name,
                             messages=history,
+                            seed=seed,
                         )
         tags = response.choices[0].message.content
         return (tags,)
 
+
+class mini_intent_recognition:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "input_str": ("STRING", {"forceInput": True}),
+                "model_name": ("STRING", {"default": "gpt-4o-mini",}),
+            },
+            "optional": {
+                "base_url": (
+                    "STRING",
+                    {
+                        "default": "",
+                    },
+                ),
+                "api_key": (
+                    "STRING",
+                    {
+                        "default": "",
+                    },
+                ),
+                "is_enable": ("BOOLEAN", {"default": True,}),
+                "intent1": ("STRING", {"default": "",}),
+                "intent2": ("STRING", {"default": "",}),
+                "intent3": ("STRING", {"default": "",}),
+                "intent4": ("STRING", {"default": "",}),
+                "intent5": ("STRING", {"default": "",}),
+                "intent6": ("STRING", {"default": "",}),
+                "intent7": ("STRING", {"default": "",}),
+                "intent8": ("STRING", {"default": "",}),
+                "intent9": ("STRING", {"default": "",}),
+                "intent10": ("STRING", {"default": "",}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING","STRING","STRING","STRING","STRING","STRING","STRING","STRING","STRING","STRING",)
+    RETURN_NAMES = ("intent1","intent2","intent3","intent4","intent5","intent6","intent7","intent8","intent9","intent10",)
+
+    FUNCTION = "file"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/迷你派对（mini-party）"
+
+    def file(
+        self,
+        model_name,
+        input_str,
+        base_url=None,
+        api_key=None,
+        is_enable=True,
+        intent1="",
+        intent2="",
+        intent3="",
+        intent4="",
+        intent5="",
+        intent6="",
+        intent7="",
+        intent8="",
+        intent9="",
+        intent10=""
+    ):
+        if not is_enable:
+            return (None,)
+        api_keys = load_api_keys(config_path)
+        if api_key != "":
+            openai.api_key = api_key
+        elif model_name in config_key:
+            api_keys = config_key[model_name]
+            openai.api_key = api_keys.get("api_key")
+        elif api_keys.get("openai_api_key") != "":
+            openai.api_key = api_keys.get("openai_api_key")
+        if base_url != "":
+            openai.base_url = base_url
+        elif model_name in config_key:
+            api_keys = config_key[model_name]
+            openai.base_url = api_keys.get("base_url")
+        elif api_keys.get("base_url") != "":
+            openai.base_url = api_keys.get("base_url")
+        if openai.api_key == "":
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
+        if openai.base_url != "":
+            if openai.base_url[-1] != "/":
+                openai.base_url = openai.base_url + "/"
+
+        prompt=f"""
+# 意图识别助理
+你是一个意图识别助理。
+## 任务
+我将给你需要意图识别的文本，你需要帮我按照下文给出的意图识别原则进行意图识别，并按照严格下文给出的格式回复我。
+##意图识别原则
+1. 请将用户输入的文本可以能与这些意图有关：{intent1}；{intent2}；{intent3};{intent4};{intent5};{intent6};{intent7};{intent8};{intent9};{intent10}。
+2. 如果以上某一个或若干个意图识别条件为【如果文本中包含""或者与""有关，则将其分类为...】,则不要将任何文本分到这一类或这些类中,因为空字符串与任何文本无关。
+以JSON的形式回复，并严格按照下文给出的格式回复我。
+
+以下是一个完整的输出示例：
+{{
+    "1": "这里输入用户给出的文本中分到{intent1}的文本",
+    "2": "这里输入用户给出的文本中分到{intent2}的文本",
+    "3": "这里输入用户给出的文本中分到{intent3}的文本",
+    "4": "这里输入用户给出的文本中分到{intent4}的文本",
+    "5": "这里输入用户给出的文本中分到{intent5}的文本",
+    "6": "这里输入用户给出的文本中分到{intent6}的文本",
+    "7": "这里输入用户给出的文本中分到{intent7}的文本",
+    "8": "这里输入用户给出的文本中分到{intent8}的文本",
+    "9": "这里输入用户给出的文本中分到{intent9}的文本",
+    "10": "这里输入用户给出的文本中分到{intent10}的文本"
+}}
+## 限制
+1. 输出时不要包含任何多余的文本，只输出意图识别结果。
+2. 不要在输出中包含任何多余的空格。
+3. 意图识别时，不要把系统提示词中的文本当作要被意图识别的文本。
+4. 意图识别时，有关的意图有输入的文本，无关的意图中不包含任何文字。
+以下为需要意图识别的文本：
+"""        
+        history= [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": input_str}
+        ]
+        openai_client = openai
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            azure = AzureOpenAI(
+                api_key= openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            openai_client = azure
+        response = openai_client.chat.completions.create(
+                            model=model_name,
+                            messages=history,
+                            response_format={"type": "json_object"}
+                        )
+        output = response.choices[0].message.content
+        output = json.loads(output)
+        return tuple(None if output.get(str(i)) == "" else output.get(str(i)) for i in range(1, 11))
 
 NODE_CLASS_MAPPINGS = {
     "mini_party": mini_party,
@@ -1326,6 +1642,7 @@ NODE_CLASS_MAPPINGS = {
     "mini_story":mini_story,
     "mini_ocr": mini_ocr,
     "mini_summary":mini_summary,
+    "mini_intent_recognition": mini_intent_recognition,
     }
 # 获取系统语言
 lang = locale.getdefaultlocale()[0]
@@ -1344,27 +1661,29 @@ if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "mini_party": "迷你派对",
-        "mini_translate": "迷你长文翻译器",
-        "mini_sd_prompt": "迷你SD提示词生成器",
-        "mini_flux_prompt": "迷你FLUX提示词生成器",
-        "mini_sd_tag": "迷你SD图片提示词反推器",
-        "mini_flux_tag": "迷你FLUX图片提示词反推器",
-        "mini_error_correction": "迷你长文纠错器",
-        "mini_story": "迷你故事生成器",
-        "mini_ocr": "迷你高级OCR",
-        "mini_summary": "迷你摘要生成器",
+        "mini_party": "☁️迷你派对",
+        "mini_translate": "☁️迷你长文翻译器",
+        "mini_sd_prompt": "☁️迷你SD提示词生成器",
+        "mini_flux_prompt": "☁️迷你FLUX提示词生成器",
+        "mini_sd_tag": "☁️迷你SD图片提示词反推器",
+        "mini_flux_tag": "☁️迷你FLUX图片提示词反推器",
+        "mini_error_correction": "☁️迷你长文纠错器",
+        "mini_story": "☁️迷你故事生成器",
+        "mini_ocr": "☁️🖥️迷你高级OCR",
+        "mini_summary": "☁️迷你摘要生成器",
+        "mini_intent_recognition": "☁️迷你意图识别器",
         }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "mini_party": "Mini Party",
-        "mini_translate": "Mini Long Text Translator",
-        "mini_sd_prompt": "Mini SD Prompt Generator",
-        "mini_flux_prompt": "Mini FLUX Prompt Generator",
-        "mini_sd_tag": "Mini SD image prompt retractor",
-        "mini_flux_tag": "Mini FLUX image prompt retractor",
-        "mini_error_correction": "Mini Long Text Error Corrector",
-        "mini_story": "Mini Story Generator",
-        "mini_ocr": "Mini Advanced OCR",
-        "mini_summary": "Mini Summary Generator",
+        "mini_party": "☁️Mini Party",
+        "mini_translate": "☁️Mini Long Text Translator",
+        "mini_sd_prompt": "☁️Mini SD Prompt Generator",
+        "mini_flux_prompt": "☁️Mini FLUX Prompt Generator",
+        "mini_sd_tag": "☁️Mini SD image prompt retractor",
+        "mini_flux_tag": "☁️Mini FLUX image prompt retractor",
+        "mini_error_correction": "☁️Mini Long Text Error Corrector",
+        "mini_story": "☁️Mini Story Generator",
+        "mini_ocr": "☁️🖥️Mini Advanced OCR",
+        "mini_summary": "☁️Mini Summary Generator",
+        "mini_intent_recognition": "☁️Mini Intent Recognizer",
         }

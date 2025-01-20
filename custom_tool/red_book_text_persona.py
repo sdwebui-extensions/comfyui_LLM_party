@@ -10,15 +10,15 @@ class red_book_text_persona:
                 "main_body": ("STRING", {"default": "Red Book Text Persona"}),
                 "text_type": (text_type_list, {"default": "产品文案"}),
                 "min_length": ("INT", {"default": 100}),
-                "desc": ("STRING", ),
+                "desc": ("STRING",{"default": ""} ),
             },
             "optional": {
-                "must_include_tag": ("STRING", ),
+                "must_include_tag": ("STRING",{"forceInput": True} ),
             },
         }
     
     RETURN_TYPES = ("STRING","STRING",)
-    RETURN_NAMES = ("system_prompt","user_prompt",)
+    RETURN_NAMES = ("system_prompt_input","user_prompt_input",)
 
     FUNCTION = "red_book_text"
 

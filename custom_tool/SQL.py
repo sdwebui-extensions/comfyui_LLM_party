@@ -75,7 +75,7 @@ class sql_tool:
 
     FUNCTION = "query_db"
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/知识库（Knowbase）"
 
     def query_db(self, api_key,base_url,model_name, db_connection_string, query_str, is_enable=True):
 
@@ -100,7 +100,9 @@ class sql_tool:
             openai.base_url = os.environ.get("OPENAI_API_BASE")
 
         if not openai.api_key:
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
 
         output = [
             {
@@ -140,9 +142,9 @@ if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "sql_tool": "SQL工具"
+        "sql_tool": "☁️SQL工具"
     }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "sql_tool": "SQL tool"
+        "sql_tool": "☁️SQL tool"
     }

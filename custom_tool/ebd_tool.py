@@ -45,7 +45,7 @@ class advance_ebd_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/知识库（Knowbase）"
 
     def file(self, path, k, chunk_size, chunk_overlap, device,file_name, file_content="", is_enable="enable", base_path="",ebd_model=None):
         if is_enable == "disable":
@@ -69,7 +69,24 @@ class advance_ebd_tool:
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )
-            chunks = text_splitter.split_text(file_content)
+            # 判断file_content是否可以被json load
+            try:
+                files_load = json.loads(file_content)
+            except json.JSONDecodeError:
+                files_load = file_content
+            
+            if isinstance(files_load, str):
+                chunks = text_splitter.split_text(files_load)
+            elif isinstance(files_load, list):
+                chunks = []
+                for file in files_load:
+                    content= file["file_content"]
+                    chunks_list = text_splitter.split_text(content)
+                    i = 1
+                    for chunk in chunks_list:
+                        new_chunk = {"source": file["source"],"paragraph_index":str(i) , "file_content": chunk}
+                        chunks.append(json.dumps(new_chunk, ensure_ascii=False))
+                        i += 1
             knowledge_base = FAISS.from_texts(chunks, bge_embeddings)
         file_list[file_name] = knowledge_base
         output = [
@@ -82,7 +99,7 @@ class advance_ebd_tool:
                         "type": "object",
                         "properties": {
                             "question": {"type": "string", "description": "要查询的关键词"},
-                            "file_name": {"type": "string", "description": f"要查询的文件名，只能从{file_list.keys()}中选择。"},
+                            "file_name": {"type": "string", "description": f"要查询的知识库名，只能从{file_list.keys()}中选择。"},
                             "k": {"type": "string", "description": f"返回的段落数量，默认为{k}。"},
                         },
                         "required": ["question", "file_name", "k"],
@@ -109,6 +126,6 @@ except:
 if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
-    NODE_DISPLAY_NAME_MAPPINGS = {"advance_ebd_tool": "高级词嵌入工具"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"advance_ebd_tool": "☁️💻高级词嵌入工具"}
 else:
-    NODE_DISPLAY_NAME_MAPPINGS = {"advance_ebd_tool": "Advanced Embedding Tool"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"advance_ebd_tool": "☁️💻Advanced Embedding Tool"}

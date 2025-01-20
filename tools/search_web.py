@@ -90,7 +90,7 @@ class google_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/联网（Networking）"
 
     def web(self, searchType="web", google_api_key=None, google_CSE_ID=None, is_enable=True):
         if is_enable == False:
@@ -153,7 +153,7 @@ class google_loader:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
     def web(self, keywords, paper_num=1, searchType="web", google_api_key=None, google_CSE_ID=None, is_enable=True):
         if is_enable == False:
@@ -175,29 +175,47 @@ class google_loader:
 api_keys = load_api_keys(config_path)
 b_api_key = api_keys.get("bing_api_key")
 b_searchType = "web"
-
-
+b_config_id=""
+is_custom = False
 def search_web_bing(keywords, paper_num):
     today = str(date.today())
-    global b_api_key, b_searchType
+    global b_api_key, b_searchType,b_config_id,is_custom
     num_results = 10
     start = num_results * (int(paper_num) - 1) + 1
     try:
-        # 使用必应搜索API的基础URL
-        if b_searchType == "web":
-            base_url = "https://api.bing.microsoft.com/v7.0/search"
-        elif b_searchType == "image":
-            base_url = "https://api.bing.microsoft.com/v7.0/images/search"
-        elif b_searchType == "video":
-            base_url = "https://api.bing.microsoft.com/v7.0/videos/search"
-        elif b_searchType == "news":
-            base_url = "https://api.bing.microsoft.com/v7.0/news/search"
+        if is_custom == False:
+            # 使用必应搜索API的基础URL
+            if b_searchType == "web":
+                base_url = "https://api.bing.microsoft.com/v7.0/search"
+            elif b_searchType == "image":
+                base_url = "https://api.bing.microsoft.com/v7.0/images/search"
+            elif b_searchType == "video":
+                base_url = "https://api.bing.microsoft.com/v7.0/videos/search"
+            elif b_searchType == "news":
+                base_url = "https://api.bing.microsoft.com/v7.0/news/search"
+        else:
+            if b_searchType == "web":
+                base_url = "https://api.bing.microsoft.com/v7.0/custom/search"
+            elif b_searchType == "image":
+                base_url = "https://api.bing.microsoft.com/v7.0/custom/images/search"
+            elif b_searchType == "video":
+                base_url = "https://api.bing.microsoft.com/v7.0/custom/videos/search"
+            elif b_searchType == "news":
+                base_url = "https://api.bing.microsoft.com/v7.0/custom/news/search"
         headers = {"Ocp-Apim-Subscription-Key": b_api_key}
-        params = {
-            "q": keywords if isinstance(keywords, str) else " ".join(keywords),
-            "count": num_results,
-            "offset": start,
-        }
+        if b_config_id != "":
+            params = {
+                "q": keywords if isinstance(keywords, str) else " ".join(keywords),
+                "count": num_results,
+                "offset": start,
+                "customConfig": b_config_id
+            }
+        else:
+            params = {
+                "q": keywords if isinstance(keywords, str) else " ".join(keywords),
+                "count": num_results,
+                "offset": start,
+            }
 
         response = requests.get(base_url, headers=headers, params=params, timeout=10)
         # 打印HTTP状态码和响应内容以供调试
@@ -240,6 +258,8 @@ class bing_tool:
             },
             "optional": {
                 "bing_api_key": ("STRING", {}),
+                "custom_config_id": ("STRING", {}),
+                "is_custom_api": ("BOOLEAN", {"default": False}),
             },
         }
 
@@ -250,12 +270,14 @@ class bing_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/联网（Networking）"
 
-    def web(self, searchType="web", bing_api_key=None, is_enable=True):
+    def web(self, searchType="web", bing_api_key=None, is_enable=True,custom_config_id="",is_custom_api=False):
         if is_enable == False:
             return (None,)
-        global b_api_key, b_searchType
+        global b_api_key, b_searchType,b_config_id,is_custom
+        is_custom = is_custom_api
+        b_config_id = custom_config_id
         b_searchType = searchType
         if bing_api_key is not None and bing_api_key != "":
             b_api_key = bing_api_key
@@ -298,6 +320,8 @@ class bing_loader:
             },
             "optional": {
                 "bing_api_key": ("STRING", {}),
+                "custom_config_id": ("STRING", {}),
+                "is_custom_api": ("BOOLEAN", {"default": False}),
             },
         }
 
@@ -308,12 +332,14 @@ class bing_loader:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
-    def web(self, keywords, paper_num=1, searchType="web", bing_api_key=None, is_enable=True):
+    def web(self, keywords, paper_num=1, searchType="web", bing_api_key=None, is_enable=True,custom_config_id="", is_custom_api=False):
         if is_enable == False:
             return (None,)
-        global b_api_key, b_searchType
+        global b_api_key, b_searchType,b_config_id,is_custom
+        is_custom = is_custom_api
+        b_config_id = custom_config_id
         b_searchType = searchType
         if bing_api_key is not None and bing_api_key != "":
             b_api_key = bing_api_key
@@ -399,7 +425,7 @@ class duckduckgo_tool:
 
     FUNCTION = "web"
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/联网（Networking）"
 
     def web(self, searchType="web", is_enable=True):
         if is_enable == False:
@@ -447,7 +473,7 @@ class duckduckgo_loader:
 
     FUNCTION = "web"
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
     def web(self, keywords, paper_num=1, searchType="web", is_enable=True):
         if is_enable == False:

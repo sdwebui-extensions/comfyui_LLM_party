@@ -74,7 +74,7 @@ class wikipedia_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/联网（Networking）"
 
     def wikipedia(self, query, embedding_path, chunk_size, chunk_overlap, device, is_enable="enable"):
         if is_enable == "disable":
@@ -133,7 +133,7 @@ class load_wikipedia:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
     def wikipedia(self, query, is_enable=True):
         if is_enable == False:

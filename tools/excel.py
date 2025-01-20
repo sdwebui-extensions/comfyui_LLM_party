@@ -3,6 +3,7 @@ import json
 import os
 import random
 import time
+import datetime
 
 import numpy as np
 import pandas as pd
@@ -10,9 +11,11 @@ import torch
 from PIL import Image, ImageFile, ImageOps, ImageSequence, UnidentifiedImageError
 import signal
 import sys
+
 def interrupt_handler(signum, frame):
     print("Process interrupted")
     sys.exit(0)
+
 def pillow(fn, arg):
     prev_value = None
     try:
@@ -26,6 +29,11 @@ def pillow(fn, arg):
             ImageFile.LOAD_TRUNCATED_IMAGES = prev_value
         return x
 
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime.datetime, datetime.date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 class load_excel:
     def __init__(self):
@@ -43,7 +51,10 @@ class load_excel:
                 "load_all": ("BOOLEAN", {"default": False}),
                 "iterator_mode": (["sequential","random","Infinite", "sequential_flagout"], {"default": "sequential"}),
             },
-            "optional": {},
+            "optional": {
+                "start_row": ("INT", {"default": 2, "min": 2, "max": 1048576}),
+                "end_row": ("INT", {"default": 1048576, "min": 2, "max": 1048576}),
+            },
         }
 
     RETURN_TYPES = ("STRING", "BOOLEAN")
@@ -51,11 +62,9 @@ class load_excel:
 
     FUNCTION = "file"
 
-    # OUTPUT_NODE = False
-
     CATEGORY = "大模型派对（llm_party）/迭代器（iterator）"
 
-    def file(self, path,iterator_mode, is_enable=True, is_reload=False,load_all=False):
+    def file(self, path, iterator_mode, is_enable=True, is_reload=False, load_all=False,start_row=2, end_row=1048576):
         flag_is_end = False
         if not is_enable:
             return (None, flag_is_end,)   
@@ -63,31 +72,33 @@ class load_excel:
             # 返回这个表格，以json字符串格式返回
             df = pd.read_excel(path, header=0)
             data_list = df.to_dict(orient='records')
-            data = json.dumps(data_list, ensure_ascii=False, indent=4)
+            data = json.dumps(data_list, ensure_ascii=False, indent=4, cls=DateTimeEncoder)
             return (data, flag_is_end,)
+        if self.index < start_row - 2:
+            self.index = start_row - 2  # 重置索引为0，因为我们要从第二行开始读取数据
         if self.path != path or is_reload == True:
-            self.index = 0  # 重置索引为0，因为我们要从第二行开始读取数据
+            self.index = start_row - 2  # 重置索引为0，因为我们要从第二行开始读取数据
             self.path = path
         # 使用pandas读取Excel文件，header=0表示第一行作为列名
         df = pd.read_excel(self.path, header=0)
         # 检查是否有足够的行可以读取
-        if self.index >= len(df):
-            self.index = 0
+        if self.index >= len(df) or self.index >= end_row - 1:
+            self.index = start_row - 2  # 重置索引为0，因为我们要从第二行开始读取数据
             if iterator_mode == "sequential":
                 signal.signal(signal.SIGINT, interrupt_handler)
                 signal.raise_signal(signal.SIGINT)  # 直接中断进程
-        if self.index == len(self.data) - 1 and iterator_mode == "sequential_flagout":
+        if (self.index == len(df) - 1 or self.index == end_row - 2) and iterator_mode == "sequential_flagout":
             flag_is_end = True
         # 读取第self.index行的数据
         data_row = df.iloc[self.index]
         # 将Series对象转换为字典
         data_dict = data_row.to_dict()
         # 返回JSON格式的数据
-        data = json.dumps(data_dict, ensure_ascii=False,indent=4)
-        if iterator_mode == "sequential" or iterator_mode =="Infinite" or iterator_mode == "sequential_flagout":
+        data = json.dumps(data_dict, ensure_ascii=False, indent=4, cls=DateTimeEncoder)
+        if iterator_mode == "sequential" or iterator_mode == "Infinite" or iterator_mode == "sequential_flagout":
             self.index += 1
         elif iterator_mode == "random":
-            self.index = random.randint(0, len(df) - 1)
+            self.index = random.randint(start_row - 2,end_row - 2)
         return (data, flag_is_end,)
 
     @classmethod
@@ -95,7 +106,7 @@ class load_excel:
         self.record = self.index
         return self.record
 
-
+# 其他类的定义保持不变
 class image_iterator:
     def __init__(self):
         self.index = 0
@@ -132,7 +143,9 @@ class image_iterator:
             self.path = folder_path
         # 将文件夹里的所有图片按修改时间排序，
         image_files = sorted(
-            [f for f in os.listdir(folder_path) if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))],
+            [f for f in os.listdir(folder_path) if f.lower().endswith((
+                ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".svg", ".ico", ".raw"
+            ))]
         )
         # 读取第self.index个图片
         # 如果没有更多的图片可以读取，返回None
@@ -184,6 +197,69 @@ class image_iterator:
         elif iterator_mode == "random":
             self.index = random.randint(0, len(image_files) - 1)
         return (output_image, flag_is_end,)
+    @classmethod
+    def IS_CHANGED(self, s):
+        self.record = self.index
+        return self.record
+
+# 其他类的定义保持不变
+class file_path_iterator:
+    def __init__(self):
+        self.index = 0
+        self.record = 0
+        self.path = None
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "folder_path": ("STRING", {"default": ""}),
+                "extension": ("STRING", {"default": ".png,.jpg,.jpeg,.gif,.bmp"}),
+                "is_enable": ("BOOLEAN", {"default": True}),
+                "is_reload": ("BOOLEAN", {"default": False}),
+                "iterator_mode": (["sequential","random","Infinite", "sequential_flagout"], {"default": "sequential"}),
+            },
+            "optional": {},
+        }
+
+    RETURN_TYPES = ("STRING", "BOOLEAN")
+    RETURN_NAMES = ("file_path", "is_end")
+
+    FUNCTION = "file"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/迭代器（iterator）"
+
+    def file(self, folder_path,iterator_mode,extension, is_enable=True, is_reload=False):
+        flag_is_end = False
+        if not is_enable:
+            return (None, flag_is_end,)
+        if self.path != folder_path or is_reload == True:
+            self.index = 0  # 重置索引为0，因为我们要从第二行开始读取数据
+            self.path = folder_path
+        extension = extension.split(",")
+        # 将文件夹里的所有图片按修改时间排序，
+        image_files = sorted(
+            [f for f in os.listdir(folder_path) if f.lower().endswith(tuple(extension))],
+        )
+        # 读取第self.index个图片
+        # 如果没有更多的图片可以读取，返回None
+
+        if self.index >= len(image_files):
+            self.index = 0
+            if iterator_mode == "sequential":
+                signal.signal(signal.SIGINT, interrupt_handler)
+                signal.raise_signal(signal.SIGINT)  # 直接中断进程
+        if self.index == len(image_files) - 1 and iterator_mode == "sequential_flagout":
+            flag_is_end = True
+        image_path = os.path.join(folder_path, image_files[self.index])
+
+        if iterator_mode == "sequential" or iterator_mode =="Infinite" or iterator_mode == "sequential_flagout":
+            self.index += 1
+        elif iterator_mode == "random":
+            self.index = random.randint(0, len(image_files) - 1)
+        return (image_path, flag_is_end,)
     @classmethod
     def IS_CHANGED(self, s):
         self.record = self.index

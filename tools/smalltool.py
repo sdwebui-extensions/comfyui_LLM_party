@@ -1,3 +1,4 @@
+import json
 class load_int:
     @classmethod
     def INPUT_TYPES(s):
@@ -14,12 +15,55 @@ class load_int:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/文本（text）"
 
     def tts(self, text):
         text = int(text)
         return (text,)
 
+class load_float:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("FLOAT", {"default": 0.0}),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("float",)
+
+    FUNCTION = "tts"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "大模型派对（llm_party）/文本（text）"
+
+    def tts(self, text):
+        text = float(text)
+        return (text,)
+
+class load_bool:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("BOOLEAN", {"default": True}),
+            },
+        }
+
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("bool",)
+
+    FUNCTION = "tts"
+
+    OUTPUT_NODE = True
+
+    CATEGORY = "大模型派对（llm_party）/文本（text）"
+
+    def tts(self, text):
+        text = text
+        return (text,)
 
 class AnyType(str):
     """A special class that is always equal in not equal comparisons. Credit to pythongosssss"""
@@ -165,4 +209,19 @@ class any2str:
     CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
     def tts(self,any):
-        return (str(any),)
+        if any is None:
+            return ("None",)
+        # any是字典或者列表，就json.dumps
+        elif isinstance(any, dict):
+            return (json.dumps(any),)
+        elif isinstance(any, list):
+            return (json.dumps(any),)
+        # bool值，就转成str
+        elif isinstance(any, bool):
+            if any:
+                return ("True",)
+            else:
+                return ("False",)
+        else:
+            return (str(any),)
+            

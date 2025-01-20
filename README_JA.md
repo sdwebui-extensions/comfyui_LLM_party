@@ -1,12 +1,12 @@
 ![画像](img/封面.png)
 
 <div align="center">
-  <a href="https://space.bilibili.com/26978344">ビデオチュートリアル</a> ·
-  <a href="how_to_use_nodes_ZH.md">テキストチュートリアル</a> ·
-  <a href="workflow_tutorial/">ワークフローチュートリアル</a> ·
-  <a href="https://pan.baidu.com/share/init?surl=T4aEB4HumdJ7iVbvsv1vzA&pwd=qyhu">百度リンク</a> ·
+  <a href="https://space.bilibili.com/26978344">bilibili</a> ·
+  <a href="https://www.youtube.com/@comfyui-LLM-party">youtube</a> ·
+  <a href="https://github.com/heshengtao/Let-LLM-party">テキストチュートリアル</a> ·
+  <a href="https://pan.quark.cn/s/190b41f3bbdb">クラウドディスクのアドレス</a> ·
   <a href="img/Q群.jpg">QQグループ</a> ·
-  <a href="https://discord.gg/gxrQAYy6">ディスコード</a> ·
+  <a href="https://discord.gg/f2dsAKKr2V">ディスコード</a> ·
   <a href="https://dcnsxxvm4zeq.feishu.cn/wiki/IyUowXNj9iH0vzk68cpcLnZXnYf">私たちについて</a>
 </div>
 
@@ -36,12 +36,14 @@ https://github.com/user-attachments/assets/945493c0-92b3-4244-ba8f-0c4b2ad4eba6
 ComfyUI LLM Partyは、最も基本的なLLMの多ツール呼び出しやキャラクター設定によって、専属のAIアシスタントを迅速に構築することから、業界に適用可能な単語ベクトルRAG、GraphRAGを用いた知識ベースのローカル管理までを行います。単一のエージェントパイプラインから、複雑なエージェント間の放射状および環状の相互作用モードの構築まで、個人ユーザーのためのSNSアプリ（QQ、Feishu、Discord）への接続から、ストリーミングメディアの作業者が必要とするワンストップLLM+TTS+ComfyUIワークフローまで、普通の学生が必要とする最初のLLMアプリケーションの簡単な導入から、研究者が一般的に使用するさまざまなパラメータ調整インターフェースやモデル適応に至るまで、これらすべての答えはComfyUI LLM Partyの中にあります。
 
 ## クイックスタート
+0. もしあなたがcomfyuiを使用したことがなく、comfyuiでLLMパーティをインストールする際に依存関係の問題が発生した場合は、[こちらをクリック](https://drive.google.com/file/d/1T9C7gEbd-w_zf9GqZO1VeI3z8ek8clpX/view?usp=sharing)して、LLMパーティを含むcomfyui **windows** ポータブルパッケージをダウンロードしてください。ご注意ください！このポータブルパッケージにはpartyと管理者の2つのプラグインのみが含まれており、windowsシステム専用となっています。（既にcomfyuiがインストールされている場合、LLM partyのインストール手順は省略できます。）
 1. 以下のワークフローをcomfyuiにドラッグし、[comfyui-Manager](https://github.com/ltdrdata/ComfyUI-Manager)を使用して不足しているノードをインストールします。
   - APIを使用してLLMを呼び出す：[start_with_LLM_api](workflow/start_with_LLM_api.json)
+  - aisuiteを使用してLLMを呼び出します：[start_with_aisuite](workflow/start_with_aisuite.json)
   - ollamaを使用してローカルLLMを管理する：[start_with_Ollama](workflow/ollama.json)
   - 分散形式のローカルLLMを使用する：[start_with_LLM_local](workflow/start_with_LLM_local.json)
   - GGUF形式のローカルLLMを使用する：[start_with_LLM_GGUF](workflow/start_with_GGUF.json)
-  - 分散形式のローカルVLMを使用する：[start_with_VLM_local](https://github.com/heshengtao/comfyui_LLM_party/blob/main/workflow_tutorial/LLM_Party%20for%20Llama3.2%20-Vision%EF%BC%88%E5%B8%A6%E8%AE%B0%E5%BF%86%EF%BC%89.json)（テスト中、現在は[Llama-3.2-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)のみサポート）
+  - 分散形式のローカルVLMを使用する：[start_with_VLM_local](workflow/start_with_VLM_local.json)（テスト中、現在は[Llama-3.2-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)のみサポート）
   - GGUF形式のローカルVLMを使用する：[start_with_VLM_GGUF](workflow/start_with_llava.json)
 2. APIを使用する場合、API LLMローダーノードに`base_url`（リレーAPIでも可、末尾は`/v1/`であることを確認）と`api_key`を入力します。例：`https://api.openai.com/v1/`
 3. ollamaを使用する場合、API LLMローダーノードで`is_ollama`オプションをオンにし、`base_url`と`api_key`を入力する必要はありません。
@@ -49,66 +51,56 @@ ComfyUI LLM Partyは、最も基本的なLLMの多ツール呼び出しやキャ
 5. このプロジェクトは使用の敷居が高いため、クイックスタートを選択した場合でも、プロジェクトのホームページをじっくり読んでいただけると幸いです。
 
 ## 最新の更新
-1. 自動モデル名リストノードが削除され、config.iniファイルの設定からモデル名リストを自動取得する簡単なAPI LLMローダーノードに置き換えられました。モデルをロードするには、名前を選択するだけです。さらに、簡易LLMローダー、簡易LLM-GGUFローダー、簡易VLMローダー、簡易VLM-GGUFローダー、簡易LLM loraローダーノードが更新されました。これらはすべてpartyフォルダ内のmodelフォルダからモデルパスを自動的に読み取り、さまざまなローカルモデルのロードをより簡単にします。
-1. LLMは、SDやFLUXのように動的にloraをロードできるようになりました。複数のloraを連結して、同じLLMに複数のloraをロードすることができます。サンプルワークフロー：[start_with_LLM_LORA](workflow/llm_lora.json)。
-2. [searxng](https://github.com/searxng/searxng)ツールが追加され、Web全体の検索を集約できます。Perplexicaもこの集約検索ツールに依存しているため、パーティーでPerplexicaをセットアップできます。Dockerにsearxng/searxngのパブリックイメージをデプロイし、その後、コマンド`docker run -d -p 8080:8080 searxng/searxng`を使用して起動し、`http://localhost:8080`を使用してアクセスします。URL `http://localhost:8080`をpartyのsearxngツールに入力することで、searxngをLLMのツールとして使用できます。
-1. **重大アップデート！！！** これで、任意のComfyUIワークフローをLLMツールノードとしてカプセル化できます。LLMが複数のComfyUIワークフローを同時に制御できるようになります。タスクを完了させたいときに、プロンプトに基づいて適切なComfyUIワークフローを選択し、タスクを完了し、結果を返すことができます。例のワークフロー：[comfyui_workflows_tool](workflow/把任意workflow当作LLM_tool.json)。具体的な手順は以下の通りです：
-   - まず、ツールとしてカプセル化するワークフローのテキスト入力インターフェースを「ワークフロー開始」ノードの「user_prompt」出力に接続します。これは、LLMがツールを呼び出すときにプロンプトが渡される場所です。
-   - テキストと画像を出力したい場所を「ワークフロー終了」ノードの対応する入力位置に接続します。
-   - このワークフローをAPIとして保存します（設定で開発者モードを有効にする必要があります）。
-   - このワークフローをプロジェクトのworkflow_apiフォルダーに保存します。
-   - ComfyUIを再起動し、シンプルなLLMワークフローを作成します。例：[start_with_LLM_api](workflow/start_with_LLM_api.json)。
-   - このLLMノードに「ワークフローツール」ノードを追加し、LLMノードのツール入力に接続します。
-   - 「ワークフローツール」ノードで、最初の入力ボックスに呼び出したいワークフローファイル名を書きます。例：draw.json。複数のワークフローファイル名を書くことができます。2番目の入力ボックスに各ワークフローの機能を書きます。これにより、LLMがこれらのワークフローの使い方を理解できます。
-   - 実行して、LLMがカプセル化されたワークフローを呼び出し、結果を返すのを確認します。結果が画像の場合は、LLMノードの画像出力に「画像プレビュー」ノードを接続して生成された画像を表示します。注意！この方法は、8190ポートで新しいComfyUIを呼び出します。このポートを占有しないでください。WindowsおよびMacシステムでは新しいターミナルが開かれます。閉じないでください。Linuxシステムではscreenプロセスを使用してこれを実現します。使用しない場合は、このscreenプロセスを閉じてください。そうしないと、ポートが常に占有されます。
-
-![workflow_tool](img/workflowtool.png)
+1. 更新された[MCP](https://modelcontextprotocol.io/introduction)ツールでは、partyプロジェクトフォルダ内の'[mcp_config.json](mcp_config.json)'ファイルの設定を変更することで、接続するMCPサーバーを調整できます。さまざまなMCPサーバーの設定パラメーターは、こちらでご確認いただけます：[modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers)。本プロジェクトでは、デフォルト設定としてEverythingサーバーが用意されており、MCPサーバーが正常に機能するかのテストに使用されます。ワークフローの参照：[start_with_MCP](workflow/start_with_MCP.json)。開発者向けの注意：MCPツールノードは、設定済みのMCPサーバーに接続でき、その後サーバー内のtoolsをLLMが直接使用可能なツールに変換します。異なるローカルサーバーやクラウドサーバーを設定することで、世界中のすべてのLLMツールを体験することができます。
 
 ## 使用説明
-1. ノードの使用説明については、以下を参照してください：[ノードの使用方法](how_to_use_nodes.md)
+1. ノードの使用説明については、以下を参照してください：[ノードの使用方法](https://github.com/heshengtao/Let-LLM-party)
 
-2. プラグインに問題がある場合や他に疑問がある場合は、ぜひQQ群にご参加ください：[931057213](img/Q群.jpg)
-3. ワークフローのチュートリアルについては、[ワークフローのチュートリアル](workflow_tutorial/)をご参照ください。貢献してくださった[HuangYuChuh](https://github.com/HuangYuChuh)に感謝いたします。
-
-4. 高度なワークフローのアカウント：[openart](https://openart.ai/workflows/profile/comfyui_llm_party?sort=latest&tab=creation)
+2. プラグインに問題がある場合や他に疑問がある場合は、ぜひQQ群にご参加ください：[931057213](img/Q群.jpg) |discord：[discord](https://discord.gg/f2dsAKKr2V).
 
 4. さらに多くのワークフローは[workflow](workflow)フォルダーをご覧ください。
 
 ## 動画チュートリアル
-1. [手取り足取り、ブロック型エージェントの構築方法を教えます（超簡単！）](https://www.bilibili.com/video/BV1JZ421v7Tw/?vd_source=f229e378448918b84afab7c430c6a75b)
+<a href="https://space.bilibili.com/26978344">
+  <img src="img/B.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+</a>
+<a href="https://www.youtube.com/@comfyui-LLM-party">
+  <img src="img/YT.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+</a>
 
-2. [GPT-4oをcomfyuiに接続する方法 | ワークフローが別のワークフローを呼び出す | LLMをツールにする](https://www.bilibili.com/video/BV1JJ4m1A789/?spm_id_from=333.999.0.0&vd_source=f229e378448918b84afab7c430c6a75b)
-
-3. [あなたのワークフローをGPTに偽装し、WeChatに接続 | Omost互換！自分のdalle3を柔軟に創造する](https://www.bilibili.com/video/BV1DT421a7KY/?spm_id_from=333.999.0.0)
-
-4. [comfyuiでインタラクティブノベルゲームを楽しむ方法](https://www.bilibili.com/video/BV15y411q78L/?spm_id_from=333.999.0.0&vd_source=f229e378448918b84afab7c430c6a75b)
-
-5. [AI彼女、そしてあなたの形 | comfyui上でgraphRAGを実現し、neoa4jと連携 | comfyuiワークフローをstreamlitフロントエンドに接続する](https://www.bilibili.com/video/BV1dS421R7Au/?spm_id_from=333.999.0.0&vd_source=f229e378448918b84afab7c430c6a75b)
 ## モデルサポート
 1. 画像内のテキストと位置を認識するためのEasyOCRノードを追加しました。対応するマスクを生成し、LLMが表示するためのJSON文字列を返すことができます。標準版とプレミアム版が選択可能です！
 2. すべてのOpenAI形式のAPI呼び出しをサポートしています（[oneapi](https://github.com/songquanpeng/one-api)を組み合わせることで、ほぼすべてのLLM APIを呼び出すことができ、中継APIもサポートしています）。base_urlの選択は[config.ini.example](config.ini.example)を参考にしてください。現在、テスト済みのものは以下の通りです：
 * [openai](https://platform.openai.com/docs/api-reference/chat/create)（すべてのOpenAIモデルに完全に対応しており、4oおよびo1シリーズを含みます！）
 * [ollama](https://github.com/ollama/ollama)（おすすめ！ローカルで呼び出す場合は、ollama方式を使用してローカルモデルをホストすることを強くお勧めします！）
+* [Azure OpenAI](https://azure.microsoft.com/zh-cn/products/ai-services/openai-service/)
 * [llama.cpp](https://github.com/ggerganov/llama.cpp?tab=readme-ov-file#web-server)（おすすめ！ローカルgguf形式のモデルを使用したい場合は、llama.cppプロジェクトのAPIを使用してこのプロジェクトにアクセスできます！）
+* [Grok](https://x.ai/api)
 * [通義千问/qwen](https://help.aliyun.com/zh/dashscope/developer-reference/compatibility-of-openai-with-dashscope/?spm=a2c4g.11186623.0.0.7b576019xkArPq)
 * [智谱清言/glm](https://open.bigmodel.cn/dev/api#http_auth)
 * [deepseek](https://platform.deepseek.com/api-docs/zh-cn/)
 * [kimi/moonshot](https://platform.moonshot.cn/docs/api/chat#%E5%9F%BA%E6%9C%AC%E4%BF%A1%E6%81%AF)
-* [豆包](https://www.volcengine.com/docs/82379/1263482)
+* [doubao](https://www.volcengine.com/docs/82379/1263482)
+* [讯飞星火/spark](https://xinghuo.xfyun.cn/sparkapi?scr=price)
+* [Gemini](https://developers.googleblog.com/zh-hans/gemini-is-now-accessible-from-the-openai-library/)(従来のGemini API LLM ローダーノードは新しいバージョンで廃止されましたので、LLM APIローダーノードをご利用ください。base_urlは以下を選択してください：https://generativelanguage.googleapis.com/v1beta/)
 
-2. Gemini形式のAPI呼び出しをサポートしています：
-* [Gemini](https://aistudio.google.com/app/prompts/new_chat)
+2. [aisuite](https://github.com/andrewyng/aisuite)互換のすべてのAPI呼び出しをサポート：
+* [anthropic/claude](https://www.anthropic.com/)  
+* [aws](https://docs.aws.amazon.com/solutions/latest/generative-ai-application-builder-on-aws/api-reference.html)
+* [vertex](https://cloud.google.com/vertex-ai/docs/reference/rest)
+* [huggingface](https://huggingface.co/) 
 
 3. トランスフォーマーライブラリのほとんどのローカルモデルと互換性があります（ローカルLLMモデルチェーンノードのモデルタイプは、LLM、VLM-GGUF、およびLLM-GGUFに変更され、LLMモデルの直接ロード、VLMモデルのロード、およびGGUF形式のLLMモデルのロードに対応します）。VLMまたはGGUF形式のLLMモデルでエラーが発生した場合は、[llama-cpp-python](https://github.com/abetlen/llama-cpp-python/releases)から最新バージョンのllama-cpp-pythonをダウンロードしてください。現在テストされているモデルには次のものが含まれます：
 * [ClosedCharacter/Peach-9B-8k-Roleplay](https://huggingface.co/ClosedCharacter/Peach-9B-8k-Roleplay)(推奨！ロールプレイモデル)
 * [lllyasviel/omost-llama-3-8b-4bits](https://huggingface.co/lllyasviel/omost-llama-3-8b-4bits)(推奨！豊富なプロンプトモデル)
 * [meta-llama/Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf)
 * [Qwen/Qwen2-7B-Instruct](https://huggingface.co/Qwen/Qwen2-7B-Instruct)
-* [xtuner/llava-llama-3-8b-v1_1-gguf](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-gguf)
+* [openbmb/MiniCPM-V-2_6-gguf](https://huggingface.co/openbmb/MiniCPM-V-2_6-gguf/tree/main)
 * [lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/tree/main)
 * [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
 
 4. モデルのダウンロード：
+* [クォーククラウドアドレス](https://pan.quark.cn/s/190b41f3bbdb)
 * [百度云アドレス](https://pan.baidu.com/share/init?surl=T4aEB4HumdJ7iVbvsv1vzA&pwd=qyhu)、抽出コード：qyhu
 
 ## ダウンロード
@@ -146,71 +138,9 @@ ComfyUI LLM Partyは、最も基本的なLLMの多ツール呼び出しやキャ
 2. 大規模言語モデル（LLM）ノードを新規作成し、ノード内に直接あなたの`openai_api_key`、`base_url`を入力します。
 3. ollamaモデルを使用する場合は、LLM_apiノードを使用し、ノードの`base_url`に`http://127.0.0.1:11434/v1/`を入力し、`api_key`に`ollama`を、`model_name`にはあなたのモデル名（例：llama3）を入力します。
 4. 画像入力LLMを使用する場合は、画像ホスティングサービスのimgbbを推奨し、ノードにあなたの`imgbb_api_key`を入力します。
+
 ## 更新ログ
-1. comfyuiのインターフェースで右クリックし、右クリックメニューの`llm`を選択すると、本プロジェクトのノードを見つけることができます。[ノードの使い方](how_to_use_nodes_ZH.md)
-2. API接続またはローカル大モデル接続をサポートします。モジュール化されたツール呼び出し機能を実現しています。base_urlを入力する際は、`/v1/`で終わるURLを入力してください。[ollama](https://github.com/ollama/ollama)を使用してモデルを管理し、base_urlに`http://127.0.0.1:11434/v1/`を入力し、api_keyにollamaを、model_nameにモデル名を入力してください。例: llama3。
-- API接続のワークフロー例：[start_with_LLM_api](workflow/start_with_LLM_api.json)
-- ローカルモデル接続のワークフロー例：[start_with_LLM_local](workflow/start_with_LLM_local.json)
-- ollama接続のワークフロー例：[ollama](workflow/ollama.json)
-3. ローカル知識ベース接続をサポートし、RAGを実現しています。ワークフロー例：[知識ベースRAG検索.json](workflow/知识库RAG搜索.json)
-4. コードインタープリターを呼び出すことができます。
-5. インターネット検索が可能で、Google検索をサポートしています。ワークフロー例：[映画検索ワークフロー](workflow/电影查询工作流.json)
-6. comfyuiで条件文を実現でき、ユーザーからの質問を分類した後に特定の応答ができます。ワークフロー例：[スマートカスタマーサービス](workflow/智能客服.json)
-7. 大モデルのループリンクをサポートし、2つの大モデルによる討論会を実現できます。ワークフロー例：[電車のジレンマ討論会](workflow/电车难题辩论赛.json)
-8. 任意の人格マスクを接続でき、プロンプトテンプレートをカスタマイズできます。
-9. 様々なツール呼び出しをサポートし、現在、天気確認、時間確認、知識ベース、コード実行、インターネット検索、単一のウェブページ検索などの機能を開発しています。
-10. LLMをツールノードとして使用することができます。ワークフロー例：[LLM入れ子](workflow/LLM套娃.json)
-11. API+streamlitを使用して、自分のWebアプリケーションを迅速に開発することができます。
-12. 危険な万能インタープリターノードが新たに追加され、大モデルにあらゆることをさせることができます。
-13. 右クリックメニューの関数（function）サブディレクトリ内の表示テキスト（show_text）ノードをLLMノードの出力表示として使用することをお勧めします。
-14. GPT-4Oの視覚機能をサポートしました！サンプルワークフロー：[GPT-4o](workflow/GPT-4o.json)  
-15. 他のワークフローを呼び出すことができるワークフロートランスファーを追加しました！サンプルワークフロー：[別のワークフローを呼び出す](workflow/调用另一个工作流.json)  
-16. openaiインターフェースに類似したすべてのモデルに対応しました。例：通義千問/qwen、智谱清言/GLM、deepseek、kimi/moonshot。これらのモデルのbase_url、api_key、model_nameをLLMノードに入力して呼び出してください。  
-17. LVMローダーを新たに追加し、ローカルでLVMモデルを呼び出すことができるようになりました。[llava-llama-3-8b-v1_1-gguf](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-gguf)モデルをサポートしており、他のLVMモデルもGGUF形式であれば理論上は動作するはずです。サンプルワークフローはこちら: [start_with_LVM.json](workflow/start_with_LVM.json).  
-18. `fastapi.py`ファイルを作成しました。このファイルを直接実行すれば、`http://127.0.0.1:8817/v1/`においてopenaiインターフェースを取得でき、GPTを呼び出すことができるアプリケーションがあなたのcomfyuiワークフローを呼び出すことが可能です！具体的な操作方法については、チュートリアルを作成してご紹介いたします~  
-19. LLMローダーとLLMチェーンを分け、モデルの読み込みと設定を分離しました。これにより、異なるLLMノード間でモデルを共有できるようになりました！  
-20. 現在、macOSおよびmpsデバイスをサポートしています！[bigcat88](https://github.com/bigcat88)の貢献に感謝いたします！  
-21. ユーザーの選択に基づいて異なる結末に進むインタラクティブな小説ゲームを構築できるようになりました！サンプルワークフローの参考：[インタラクティブ小説](workflow/互动小说.json)  
-22. openaiのwhisperおよびtts機能に対応し、音声入力と出力を実現しました。サンプルワークフローの参考：[音声入力+音声出力](workflow/语音输入+语音输出.json)  
-23. [Omost](https://github.com/lllyasviel/Omost)に対応しました！！！ぜひ[omost-llama-3-8b-4bits](https://huggingface.co/lllyasviel/omost-llama-3-8b-4bits)をダウンロードして、今すぐ体験してください！サンプルワークフローはこちら：[start_with_OMOST](workflow/start_with_OMOST.json)をご参照ください。
-24. 企業微信、钉钉、飛書にメッセージを送信するLLMツールと、呼び出し可能な外部関数を追加しました。
-25. テキストイテレータを新たに追加しました。これは、各回ごとに一部分の文字だけを出力し、改行記号とチャンクサイズに基づいてテキストを安全に分割します。テキストの途中で分割することはありません。chunk_overlapは、分割されたテキストの重複文字数を示します。これにより、超長テキストを一括入力でき、無心でクリックするか、comfyuiのループ実行を開始するだけで、自動的に完了します。is_locked属性を有効にすると、入力終了時にワークフローが自動的にロックされ、実行が続行されなくなります。サンプルワークフロー：[テキストイテレータ入力](workflow/文本迭代输入.json)をご覧ください。
-26. ローカルLLMローダーおよびローカルllavaローダーにmodel name属性を追加しました。空の場合は、ノード内の各種ローカルパスを使用してロードします。空でない場合は、`config.ini`に自分で記入したパスパラメータを使用してロードします。空でなく、`config.ini`に存在しない場合は、huggingfaceからダウンロードするか、huggingfaceのモデル保存ディレクトリからロードします。huggingfaceからダウンロードしたい場合は、例えば`THUDM/glm-4-9b-chat`の形式でmodel name属性を記入してください。注意！この方法でロードされるモデルは、transformerライブラリに適合している必要があります。
-27. JSONファイル解析ノードとJSON値取得ノードを追加しました。これにより、ファイルまたはテキストから特定のキーの値を取得できるようになります。[guobalove](https://github.com/guobalove)の貢献に感謝します！
-28. ツール呼び出しのコードを改善しました。これにより、ツール呼び出し機能を持たないLLMでもis_tools_in_sys_prompt属性を有効にできるようになりました（ローカルLLMはデフォルトで有効にする必要がなく、自動的に適応します）。有効にすると、ツール情報がシステムプロンプトに追加され、LLMはツールを呼び出すことができるようになります。実現原理に関する論文：[Achieving Tool Calling Functionality in LLMs Using Only Prompt Engineering Without Fine-Tuning](https://arxiv.org/abs/2407.04997)
-
-29. カスタムツールのコードを保存するためのcustom_toolフォルダーを新設しました。custom_toolフォルダー内のコードを参考にして、カスタムツールのコードをcustom_toolフォルダーに配置することで、LLM内でカスタムツールを呼び出すことができます。
-
-30. 知識グラフツールを新たに追加し、LLMと知識グラフが完璧に相互作用できるようになりました。LLMはあなたの入力に基づいて知識グラフを修正でき、知識グラフ上で推論を行い、必要な答えを得ることができます。サンプルワークフローの参考：[graphRAG_neo4j](workflow/graphRAG_neo4j.json)
-
-31. パーソナリティAI機能を追加し、0コードで自分の彼女AIまたは彼氏AIを開発できます。無限の対話、永続的な記憶、キャラクター設定の安定性があります。サンプルワークフローの参考：[麦洛薇人格AI](workflow/麦洛薇人格AI.json)
-
-32. このLLMツール製造機を使用してLLMツールを自動生成できます。生成したツールコードをPythonファイルとして保存し、そのコードをcustom_toolフォルダーにコピーすることで、新しいノードを創造したことになります。サンプルワークフロー：[LLM工具生成器](workflow/LLM工具制造机.json)。
-
-33. duckduckgo検索をサポートしましたが、大きな制限があります。どうやら英語のキーワードしか入力できず、キーワードに複数の概念を含めることはできません。ただし、APIキーの制限がないという利点があります。
-
-34. 複数の知識ベースを分けて呼び出す機能をサポートし、プロンプト内でどの知識ベースの知識を使用して質問に回答するかを明確に示すことができます。サンプルワークフロー：[多知识库分别调用](workflow/多知识库分别调用.json)。
-
-35. LLMに追加のパラメータを入力することをサポートし、json outなどの高度なパラメータを含めることができます。サンプルワークフロー：[LLM入力额外参数](workflow/LLM额外参数eg_JSON_OUT.json)。[用json_out分离提示词](workflow/用json_out分离提示词.json)。
-36. Discordへのエージェント接続機能を新たに追加しました。（現在テスト中です）
-37. Feishuへのエージェント接続機能を新たに追加しました。特に[guobalove](https://github.com/guobalove)の貢献に感謝いたします！参考ワークフローは[飛書ロボット](workflow/飞书机器人.json)です。
-38. 汎用API呼び出しノードと多数の補助ノードを新たに追加し、リクエストボディの構築とレスポンスからの情報取得を支援します。
-39. モデルをクリアするノードを新たに追加し、任意の位置でLLMをメモリからアンロードできます！
-40. [chatTTS](https://github.com/2noise/ChatTTS)ノードを追加しました。特に[guobalove](https://github.com/guobalove)の貢献に感謝いたします！`model_path`パラメータは空にすることができます！HFモードでモデルをロードすることをお勧めします。モデルは自動的にHugging Faceからダウンロードされ、手動でのダウンロードは不要です。ローカルでロードする場合は、モデルの`asset`と`config`フォルダーをルートディレクトリに置いてください。[百度云地址](https://pan.baidu.com/share/init?surl=T4aEB4HumdJ7iVbvsv1vzA&pwd=qyhu)、抽出コード：qyhu；`custom`モードでロードする場合は、モデルの`asset`と`config`フォルダーを`model_path`下に置いてください。
-2. 一連の変換ノードを更新しました：markdownからHTML、svgから画像、HTMLから画像、mermaidから画像、markdownからExcel。
-1. llama3.2 visionモデルに対応し、マルチターン対話、視覚機能をサポートします。モデルのアドレス：[meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)。例のワークフロー：[llama3.2_vision](https://github.com/heshengtao/comfyui_LLM_party/blob/main/workflow_tutorial/LLM_Party%20for%20Llama3.2%20-Vision%EF%BC%88%E5%B8%A6%E8%AE%B0%E5%BF%86%EF%BC%89.json).
-1. GOT-OCR2を適用し、フォーマットされた出力結果をサポートし、位置ボックスと色を使用してテキストを精細に認識します。モデルのアドレス：[GOT-OCR2](https://huggingface.co/stepfun-ai/GOT-OCR2_0)。例のワークフローは、ウェブページのスクリーンショットをHTMLコードに変換し、その後ブラウザを開いてこのウェブページを表示します：[img2web](workflow/图片转网页.json)。
-2. ローカルLLMローダーノードが大幅に調整され、モデルタイプを自分で選択する必要がなくなりました。llavaローダーノードとGGUFローダーノードが再追加されました。ローカルLLMモデルチェーンノードのモデルタイプは、LLM、VLM-GGUF、およびLLM-GGUFに変更され、LLMモデルの直接ロード、VLMモデルのロード、およびGGUF形式のLLMモデルのロードに対応します。VLMモデルとGGUF形式のLLMモデルが再びサポートされるようになりました。ローカルコールは、より多くのモデルと互換性を持つようになりました！例のワークフロー：[LLM_local](workflow/start_with_LLM_local.json), [llava](workflow/start_with_llava.json), [GGUF](workflow/start_with_GGUF.json)
-2. comfyui LLMパーティーで、chatgpt-o1シリーズモデルのストロベリーシステムが再現され、[Llamaberry](https://huggingface.co/spaces/martinbowling/Llamaberry/blob/main/app.py)のプロンプトを参照しました。例のワークフロー：[ストロベリーシステムとo1の比較](workflow/草莓系统与o1对比.json)。
-2. 新しいGPT-sovitsノードが追加され、GPT-sovitsモデルを呼び出して、参照オーディオに基づいてテキストを音声に変換できるようになりました。また、微調整されたモデルのパスを入力することもできます（入力しない場合はベースモデルが推論に使用されます）任意の音声を取得できます。使用するには、[GPT-sovits](https://github.com/RVC-Boss/GPT-SoVITS)プロジェクトと対応するベースモデルをローカルにダウンロードし、GPT-sovitsプロジェクトフォルダーで`runtime\python.exe api_v2.py`を使用してAPIサービスを開始する必要があります。さらに、chatTTSノードは[comfyui LLM mafia](https://github.com/heshengtao/comfyui_LLM_mafia)に移動されました。理由は、chatTTSには多くの依存関係があり、PyPiのライセンスはCC BY-NC 4.0であり、これは非商用ライセンスです。chatTTSのGitHubプロジェクトがAGPLライセンスの下にあるにもかかわらず、不要なトラブルを避けるためにchatTTSノードをcomfyui LLM mafiaに移動しました。皆さんの理解をお願いします！
-3. 最新のOpenAIモデル、o1シリーズをサポートしました！
-4. 指定したフォルダ内のファイルを制御できるローカルファイル制御ツールを追加しました。読み取り、書き込み、追加、削除、名前変更、移動、コピーなどが可能です。このノードの潜在的な危険性のため、[comfyui LLM mafia](https://github.com/heshengtao/comfyui_LLM_mafia)に含まれています。
-5. 新しいSQLツールにより、LLMがSQLデータベースをクエリできます。
-6. READMEの多言語バージョンを更新しました。READMEドキュメントを翻訳するためのワークフロー：[translate_readme](workflow/文档自动翻译机.json)
-7. 4つのイテレーターノード（テキストイテレーター、画像イテレーター、表イテレーター、JSONイテレーター）が更新され、イテレーターのモードとして順次、ランダム、無限の3種類が追加されました。順次は順番に出力を行い、インデックスの上限を超えると自動的にプロセスを中止し、インデックス値を0にリセットします。ランダムはランダムなインデックスを選択して出力し、無限は無限に出力を繰り返します。
-8. Gemini APIローダーノードが新たに追加され、Gemini公式APIとの互換性が確保されました！国内ネットワーク環境でAPI地域制限の問題が発生した場合は、ノードをアメリカに切り替え、TUNモードを使用してください。Geminiはツール呼び出し時に、戻りパラメータに中文文字が含まれると、500のエラーコードが返されるため、特定のツールノードが使用できない場合があります。サンプルワークフロー：[start_with_gemini](workflow/start_with_gemini.json)
-9. lore bookノードが新たに追加され、LLMとの対話時に背景設定を挿入することができます。サンプルワークフロー：[lorebook](workflow/lorebook.json)
-10. FLUXプロンプト生成器マスクノードが新たに追加され、ハースストーンカード、遊戯王カード、ポスター、漫画などのさまざまなスタイルのプロンプトを生成でき、FLUXモデルを直接出力できます。参考ワークフロー：[FLUXプロンプト](https://openart.ai/workflows/comfyui_llm_party/flux-by-llm-party/sjME541i68Kfw6Ib0EAD)
+**[Click here](change_log.md)**
 
 ## 次のステップ計画：
 1. さらなるモデル適応;
@@ -227,9 +157,6 @@ ComfyUI LLM Partyは、最も基本的なLLMの多ツール呼び出しやキャ
 </a>
 <a href="https://github.com/guobalove">
   <img src="https://avatars.githubusercontent.com/u/171540731?v=4" width="50" height="50" style="border-radius: 50%; overflow: hidden;" alt="octocat"/>
-</a>
-<a href="https://github.com/HuangYuChuh">
-  <img src="https://avatars.githubusercontent.com/u/167663109?v=4" width="50" height="50" style="border-radius: 50%; overflow: hidden;" alt="octocat"/>
 </a>
 <a href="https://github.com/SpenserCai">
   <img src="https://avatars.githubusercontent.com/u/25168945?v=4" width="50" height="50" style="border-radius: 50%; overflow: hidden;" alt="octocat"/>
@@ -250,13 +177,13 @@ ComfyUI LLM Partyは、最も基本的なLLMの多ツール呼び出しやキャ
     <img src="img/Q群.jpg" style="width: 48%;" />
 </div>
 
-2. WeChatグループ：`Choo-Yong`（小助手のWeChatを追加した後にグループに参加してください）
+2. WeChatグループ：`we_glm`（小助手のWeChatを追加した後にグループに参加してください）
 
-3. discord:[discordリンク](https://discord.gg/gxrQAYy6)
+3. discord:[discordリンク](https://discord.gg/f2dsAKKr2V)
 
 ### 私たちをフォローする
 1. このプロジェクトの最新機能を継続的にフォローしたい方は、Bilibiliアカウントをフォローしてください：[派对主持BB机](https://space.bilibili.com/26978344)
-2. OpenArtアカウントは、最も便利なパーティーのワークフローを継続的に更新しています：[openart](https://openart.ai/workflows/profile/comfyui_llm_party?sort=latest&tab=creation)
+2. [youtube@comfyui-LLM-party](https://www.youtube.com/@comfyui-LLM-party)
 
 ### 寄付のサポート
 私の仕事があなたに価値をもたらしたなら、ぜひ私にコーヒーをおごってください！あなたのサポートはプロジェクトに活力を与えるだけでなく、クリエイターの心を温めます。☕💖 一杯一杯が意義深いです！

@@ -137,7 +137,7 @@ class check_web_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/联网（Networking）"
 
     def read_web(
         self,
@@ -187,7 +187,9 @@ class check_web_tool:
                 openai.base_url = os.environ.get("OPENAI_API_BASE")
 
             if not openai.api_key:
-                return ("请输入API_KEY",)
+                api_keys = load_api_keys(config_path)
+                openai.api_key = api_keys.get("openai_api_key")
+                openai.base_url = api_keys.get("base_url")
 
         if web_url is not None and web_url != "":
             output = [

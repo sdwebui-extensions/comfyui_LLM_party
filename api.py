@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -41,17 +42,12 @@ def get_all(ws, prompt):
     output_images = {}
     output_text = ""
     while True:
-        out = ws.recv()
-        if isinstance(out, str):
-            message = json.loads(out)
-            if message["type"] == "executing":
-                data = message["data"]
-                if data["node"] is None and data["prompt_id"] == prompt_id:
-                    break  # Execution is done
-        else:
-            continue  # previews are binary data
-
-    history = get_history(prompt_id)[prompt_id]
+        try:
+            history = get_history(prompt_id)[prompt_id]
+            break
+        except Exception:
+            time.sleep(0.1)
+            continue
     for o in history["outputs"]:
         for node_id in history["outputs"]:
             node_output = history["outputs"][node_id]
@@ -77,7 +73,7 @@ def api(
     positive_prompt="",
     negative_prompt="",
     model_name="",
-    workflow_path="测试画画api.json",
+    workflow_path="fastapi.json",
 ):
     global current_dir_path
     workflow_path = workflow_path
@@ -169,7 +165,7 @@ language_mapping = {
 }
 # 如果没有'wf_path'就创造
 if "wf_path" not in st.session_state:
-    st.session_state["wf_path"] = "测试画画app.json"
+    st.session_state["wf_path"] = "fastapi.json"
 # 如果没有'system_prompt'就创造
 if "system_prompt" not in st.session_state:
     st.session_state["system_prompt"] = "你是一个强大的智能助手"
@@ -306,8 +302,6 @@ if get_current_page() == "settings":
     # 设置系统提示词system_prompt
     system_prompt = st.text_area("系统提示词", height=100, placeholder="请输入你的系统提示词")
     path1 = st.session_state["wf_path"]
-    # 添加下拉菜单，选项为WF_path=os.path.join(current_dir_path,"workflow")文件夹下的json文件
-    st.markdown(f"当前工作流文件（workflow）:{path1}")
     _path = st.selectbox(
         "选择一个包含start_workflow & end_workflow的工作流文件",
         [f for f in os.listdir(os.path.join(current_dir_path, "workflow_api")) if f.endswith(".json")],
@@ -319,3 +313,4 @@ if get_current_page() == "settings":
         print(st.session_state["wf_path"])
         # 保存system_prompt到session_state
         st.session_state["system_prompt"] = system_prompt
+        st.success("保存成功！")

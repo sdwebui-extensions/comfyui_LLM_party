@@ -19,6 +19,7 @@ class extra_parameters:
                 "user": ("STRING", {"default": ""}),
                 "top_p": ("FLOAT", {"default": 1.0,"min": 0.0, "max": 1.0,"step": 0.1}),
                 "top_k": ("INT", {"default": 50}),
+                "seed": ("INT", {"default": 42}),
             }
         }
 
@@ -27,7 +28,7 @@ class extra_parameters:
 
     FUNCTION = "extra"
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def extra(
         self,
@@ -44,6 +45,7 @@ class extra_parameters:
         top_k=50,
         min_length=0,
         repetition_penalty=1.0,
+        seed=42,
     ):
         json_data = {}
         if top_p != 1.0:
@@ -72,6 +74,8 @@ class extra_parameters:
             json_data["min_length"] = min_length
         if repetition_penalty != 1.0:
             json_data["repetition_penalty"] = repetition_penalty
+        if seed != 42:
+            json_data["seed"] = seed
 
         return (json_data,)
 
@@ -92,6 +96,6 @@ except:
 if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
-    NODE_DISPLAY_NAME_MAPPINGS = {"extra_parameters": "额外参数"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"extra_parameters": "额外模型参数"}
 else:
-    NODE_DISPLAY_NAME_MAPPINGS = {"extra_parameters": "Extra Parameters"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"extra_parameters": "Extra Model Parameters"}

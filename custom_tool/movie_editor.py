@@ -30,7 +30,7 @@ def sort_videos_by_timestamp(file_names):
     return sorted(file_names, key=extract_timestamp)
 
 
-class Image2Video:
+class Image2Video_party:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -120,7 +120,7 @@ class Image2Video:
         return (video_path,)
 
 
-class CombineVideos:
+class Combine_Videos_party:
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -164,8 +164,8 @@ class CombineVideos:
     
 
 NODE_CLASS_MAPPINGS = {
-    "Image2Video": Image2Video,
-    "CombineVideos": CombineVideos
+    "Image2Video_party": Image2Video_party,
+    "Combine_Videos_party": Combine_Videos_party
     }
 
 lang = locale.getdefaultlocale()[0]
@@ -181,41 +181,11 @@ if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "Image2Video": "静态图片转视频🐶",
-        "CombineVideos": "合并视频🐶"
+        "Image2Video_party": "静态图片转视频🐶",
+        "Combine_Videos_party": "合并视频🐶"
         }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "Image2Video": "Image2Video🐶",
-        "CombineVideos": "CombineVideos🐶"
+        "Image2Video_party": "Image2Video🐶",
+        "Combine_Videos_party": "CombineVideos🐶"
         }
-
-
-if __name__ == '__main__':
-    audio_path = r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\audios\1.mp3"
-    image_path = r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\imgs\3.png"
-    subtitle = 'Example subtitle --- LLM Party'
-    subtitle_size = 100
-    font_path = r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\font\ZCOOLKuaiLe-Regular.ttf"
-    r = 255
-    g = 255
-    b = 255
-    output_path = r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\output"
-
-    obj = Image2Video()
-    obj.image_to_video(
-        audio_path, 
-        image_path, 
-        subtitle, 
-        subtitle_size, 
-        font_path, 
-        r, g, b, 
-        output_path, 
-        True)
-
-# if __name__ == '__main__':
-#     obj = CombineVideos()
-#     obj.concatenate_videos(
-#         input_folder=r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\output",
-#         output_folder=r"E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\output_end",
-#         is_enable=True)

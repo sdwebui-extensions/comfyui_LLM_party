@@ -32,7 +32,7 @@ class FolderCleaner:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/工作流（workflow）"
     
     def delete_files(self, any, folder_path, file_type='all', is_enable=True):
         if not is_enable:
@@ -93,11 +93,3 @@ if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {"FolderCleaner": "清空文件夹🐶"}
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {"FolderCleaner": "FolderCleaner🐶"}
-
-
-
-if __name__ == '__main__':
-    obj = FolderCleaner()
-    obj.delete_files('E:\ComfyUI\custom_nodes\comfyui_LLM_party\custom_tool\imgs', 
-                     file_type='all',
-                     is_enable=True)

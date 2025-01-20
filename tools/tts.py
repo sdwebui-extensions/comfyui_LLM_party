@@ -7,7 +7,7 @@ import folder_paths
 import openai
 import requests
 import torchaudio
-
+from openai import OpenAI,AzureOpenAI
 from ..config import config_path, current_dir_path, load_api_keys
 
 
@@ -25,13 +25,13 @@ class openai_tts:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
             },
@@ -74,7 +74,9 @@ class openai_tts:
         else:
             openai.base_url = os.environ.get("OPENAI_API_BASE")
         if openai.api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
 
         if input_string != "":
             # 获得当前时间戳
@@ -83,27 +85,38 @@ class openai_tts:
             if not os.path.exists(os.path.join(current_dir_path, "audio")):
                 os.makedirs(os.path.join(current_dir_path, "audio"))
             full_audio_path = os.path.join(current_dir_path, "audio", f"{timestamp}.mp3")
-            # 请将'your_openai_api_key'替换为您的OpenAI API密钥
-            openai_api_key = openai.api_key
-            # 定义基础URL
-            base_url = openai.base_url
 
-            headers = {
-                "Authorization": f"Bearer {openai_api_key}",
-                "Content-Type": "application/json",
+            # 请将'your_openai_api_key'替换为您的OpenAI API密钥
+            openai_client = OpenAI(api_key=openai.api_key,base_url=openai.base_url)
+            if "openai.azure.com" in openai.base_url:
+                # 获取API版本
+                api_version = openai.base_url.split("=")[-1].split("/")[0]
+                # 获取azure_endpoint
+                azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+                openai_client = AzureOpenAI(
+                    api_key= openai.api_key,
+                    api_version=api_version,
+                    azure_endpoint=azure_endpoint,
+                )
+            # 构建请求数据
+            data = {
+                "model": model_name,
+                "input": input_string,
+                "voice": voice
             }
 
-            data = {"model": model_name, "input": input_string, "voice": voice}
+            # 发送POST请求
+            response = openai_client.audio.speech.create(
+                model=data["model"],
+                input=data["input"],
+                voice=data["voice"]
+            )
 
-            # 使用base_url变量构建完整的URL
-            response = requests.post(f"{base_url}audio/speech", headers=headers, json=data)
             # 将响应内容写入MP3文件
             with open(full_audio_path, "wb") as f:
                 f.write(response.content)
-
             out = full_audio_path
-            audio_path = folder_paths.get_annotated_filepath(out)
-            waveform, sample_rate = torchaudio.load(audio_path)
+            waveform, sample_rate = torchaudio.load(full_audio_path)
             audio_out = {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
         else:
             out = None

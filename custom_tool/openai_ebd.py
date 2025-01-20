@@ -9,7 +9,7 @@ import requests
 import torch
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings,AzureOpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
@@ -38,7 +38,7 @@ def openai_data_base(question):
     docs = api_base.similarity_search(question, k=api_k)
     combined_content = "".join(doc.page_content + "\n\n" for doc in docs)
     output = "文件中的相关信息如下：\n" + combined_content
-    return (output,)
+    return output
 
 
 class load_openai_ebd:
@@ -60,13 +60,13 @@ class load_openai_ebd:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
             },
@@ -79,7 +79,7 @@ class load_openai_ebd:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
     def file(
         self,
@@ -114,20 +114,45 @@ class load_openai_ebd:
             openai.base_url = os.environ.get("OPENAI_API_BASE")
 
         if not openai.api_key:
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
 
         embeddings = OpenAIEmbeddings(model=model_name, api_key=openai.api_key, base_url=openai.base_url)
-
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            embeddings = AzureOpenAIEmbeddings(
+                model=model_name,
+                api_key=openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
         if not base_path:
-            # 将文件内容按段落分割
-            paragraphs = file_content.split("\n")
-
-            # 根据chunk_size和chunk_overlap处理段落
-            chunks = []
-            for i in range(0, len(paragraphs), chunk_size - chunk_overlap):
-                chunk = "\n".join(paragraphs[i : i + chunk_size])
-                chunks.append(chunk)
-
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+            # 判断file_content是否可以被json load
+            try:
+                files_load = json.loads(file_content)
+            except json.JSONDecodeError:
+                files_load = file_content
+            
+            if isinstance(files_load, str):
+                chunks = text_splitter.split_text(files_load)
+            elif isinstance(files_load, list):
+                chunks = []
+                for file in files_load:
+                    content= file["file_content"]
+                    chunks_list = text_splitter.split_text(content)
+                    i = 1
+                    for chunk in chunks_list:
+                        new_chunk = {"source": file["source"],"paragraph_index":str(i) , "file_content": chunk}
+                        chunks.append(json.dumps(new_chunk, ensure_ascii=False))
+                        i += 1
             # 使用FAISS存储嵌入表示
             base = FAISS.from_texts(chunks, embeddings)
         else:
@@ -136,7 +161,7 @@ class load_openai_ebd:
 
         docs = base.similarity_search(question, k=k)
         combined_content = "".join(doc.page_content + "\n\n" for doc in docs)
-        output = "文件中的相关信息如下：\n" + combined_content
+        output = combined_content
         return (output,)
 
 
@@ -157,13 +182,13 @@ class openai_ebd_tool:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
             },
@@ -176,7 +201,7 @@ class openai_ebd_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/知识库（Knowbase）"
 
     def file(
         self,
@@ -210,19 +235,45 @@ class openai_ebd_tool:
             openai.base_url = os.environ.get("OPENAI_API_BASE")
 
         if not openai.api_key:
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
 
         embeddings = OpenAIEmbeddings(model=model_name, api_key=openai.api_key, base_url=openai.base_url)
-
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            embeddings = AzureOpenAIEmbeddings(
+                model=model_name,
+                api_key=openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
         if not base_path:
-            # 将文件内容按段落分割
-            paragraphs = file_content.split("\n")
-
-            # 根据chunk_size和chunk_overlap处理段落
-            chunks = []
-            for i in range(0, len(paragraphs), chunk_size - chunk_overlap):
-                chunk = "\n".join(paragraphs[i : i + chunk_size])
-                chunks.append(chunk)
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+            # 判断file_content是否可以被json load
+            try:
+                files_load = json.loads(file_content)
+            except json.JSONDecodeError:
+                files_load = file_content
+            
+            if isinstance(files_load, str):
+                chunks = text_splitter.split_text(files_load)
+            elif isinstance(files_load, list):
+                chunks = []
+                for file in files_load:
+                    content= file["file_content"]
+                    chunks_list = text_splitter.split_text(content)
+                    i = 1
+                    for chunk in chunks_list:
+                        new_chunk = {"source": file["source"],"paragraph_index":str(i) , "file_content": chunk}
+                        chunks.append(json.dumps(new_chunk, ensure_ascii=False))
+                        i += 1
 
             # 使用FAISS存储嵌入表示
             base = FAISS.from_texts(chunks, embeddings)
@@ -237,7 +288,7 @@ class openai_ebd_tool:
                 "type": "function",
                 "function": {
                     "name": "openai_data_base",
-                    "description": "查询用户上传的文件中与用户提问相关的信息。",
+                    "description": "在知识库里查询与用户提问相关的信息。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -272,13 +323,13 @@ class save_openai_ebd:
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
                     },
                 ),
             },
@@ -291,7 +342,7 @@ class save_openai_ebd:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "大模型派对（llm_party）/函数（function）"
+    CATEGORY = "大模型派对（llm_party）/知识库（knowbase）"
 
     def file(
         self,
@@ -327,15 +378,41 @@ class save_openai_ebd:
             return ("请输入API_KEY",)
 
         embeddings = OpenAIEmbeddings(model=model_name, api_key=openai.api_key, base_url=openai.base_url)
+        if "openai.azure.com" in openai.base_url:
+            # 获取API版本
+            api_version = openai.base_url.split("=")[-1].split("/")[0]
+            # 获取azure_endpoint
+            azure_endpoint = "https://"+openai.base_url.split("//")[1].split("/")[0]
+            embeddings = AzureOpenAIEmbeddings(
+                model=model_name,
+                api_key=openai.api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
 
         # 将文件内容按段落分割
-        paragraphs = file_content.split("\n")
-
-        # 根据chunk_size和chunk_overlap处理段落
-        chunks = []
-        for i in range(0, len(paragraphs), chunk_size - chunk_overlap):
-            chunk = "\n".join(paragraphs[i : i + chunk_size])
-            chunks.append(chunk)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+        # 判断file_content是否可以被json load
+        try:
+            files_load = json.loads(file_content)
+        except json.JSONDecodeError:
+            files_load = file_content
+        
+        if isinstance(files_load, str):
+            chunks = text_splitter.split_text(files_load)
+        elif isinstance(files_load, list):
+            chunks = []
+            for file in files_load:
+                content= file["file_content"]
+                chunks_list = text_splitter.split_text(content)
+                i = 1
+                for chunk in chunks_list:
+                    new_chunk = {"source": file["source"],"paragraph_index":str(i) , "file_content": chunk}
+                    chunks.append(json.dumps(new_chunk, ensure_ascii=False))
+                    i += 1
 
         # 使用FAISS存储嵌入表示
         base = FAISS.from_texts(chunks, embeddings)
@@ -368,13 +445,13 @@ if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "load_openai_ebd": "加载openai词嵌入模型",
-        "save_openai_ebd": "保存openai词嵌入数据库",
-        "openai_ebd_tool": "openai词嵌入数据库工具",
+        "load_openai_ebd": "☁️openai词向量搜索",
+        "save_openai_ebd": "☁️保存openai词嵌入数据库",
+        "openai_ebd_tool": "☁️openai词嵌入数据库工具",
     }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "load_openai_ebd": "Load OpenAI Embeddings",
-        "save_openai_ebd": "Save OpenAI Embeddings database",
-        "openai_ebd_tool": "OpenAI Embeddings database Tool",
+        "load_openai_ebd": "☁️OpenAI Word Vector Search",
+        "save_openai_ebd": "☁️Save OpenAI Embeddings database",
+        "openai_ebd_tool": "☁️OpenAI Embeddings database Tool",
     }

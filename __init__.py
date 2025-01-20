@@ -2,6 +2,8 @@ import inspect
 import os
 import re
 import shutil
+import subprocess
+import sys
 from .install import (
     check_and_uninstall_websocket,
     get_system_info,
@@ -10,6 +12,7 @@ from .install import (
     install_portaudio,
     manage_discord_packages,
 )
+from .config_update import update_config
 from .llm import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 from server import PromptServer
 
@@ -84,6 +87,44 @@ def get_latest_version_folder(directory):
 
     return latest_folder
 
+def install_playwright_browsers():
+    python_executable = sys.executable
+    # 检查python版本>=3.11
+    if sys.version_info < (3, 11):
+        print("Python version must be 3.11 or higher to install browser_use.If you don't need to use browser_use, you can ignore this warning.")
+        return
+    else:
+        # 安装browser_use，如果已经安装就跳过
+        try:
+            result = subprocess.run(
+                [python_executable, "-m", "pip", "install", "browser_use"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+            if "already up-to-date" in result.stderr or "already up-to-date" in result.stdout:
+                print("browser_use is already installed. Skipping installation.")
+            else:
+                print("browser_use installed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install Playwright browsers: {e.stderr}")
+        
+        try:
+            result = subprocess.run(
+                [python_executable, "-m", "playwright", "install"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True
+            )
+            if "already up-to-date" in result.stderr or "already up-to-date" in result.stdout:
+                print("Playwright browsers are already installed. Skipping installation.")
+            else:
+                print("Playwright browsers installed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to install Playwright browsers: {e.stderr}")
+
 
 try:
     install_portaudio()
@@ -115,6 +156,11 @@ except Exception as e:
     print(f"Error: {e}")
 try:
     manage_discord_packages()
+except Exception as e:
+    print(f"Error: {e}")
+
+try:
+    install_playwright_browsers()
 except Exception as e:
     print(f"Error: {e}")
 

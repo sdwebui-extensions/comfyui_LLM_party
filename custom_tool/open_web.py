@@ -17,7 +17,7 @@ class open_url_function:
     OUTPUT_NODE = True
     FUNCTION = "convert_txt2json"
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/APP链接（app link）"
 
     def convert_txt2json(self,path_or_url, is_enable=True):
         if is_enable == False:
@@ -54,7 +54,7 @@ class open_url_tool:
 
     FUNCTION = "convert_txt2json"
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/自动化（Automation）"
 
     def convert_txt2json(self, is_enable=True):
         if is_enable == False:

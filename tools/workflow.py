@@ -53,17 +53,12 @@ def get_all(ws, prompt):
     output_images = {}
     output_text = ""
     while True:
-        out = ws.recv()
-        if isinstance(out, str):
-            message = json.loads(out)
-            if message["type"] == "executing":
-                data = message["data"]
-                if data["node"] is None and data["prompt_id"] == prompt_id:
-                    break  # Execution is done
-        else:
-            continue  # previews are binary data
-
-    history = get_history(prompt_id)[prompt_id]
+        try:
+            history = get_history(prompt_id)[prompt_id]
+            break
+        except Exception:
+            time.sleep(0.1)
+            continue
     for o in history["outputs"]:
         for node_id in history["outputs"]:
             node_output = history["outputs"][node_id]
@@ -290,7 +285,7 @@ class workflow_tool:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/工具（tools）"
+    CATEGORY = "大模型派对（llm_party）/工具（tools）/自动化（Automation）"
 
     def workflow(self, workflow_name,workflow_description, is_enable="enable"):
         if is_enable == "disable":

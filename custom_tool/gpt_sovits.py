@@ -12,7 +12,7 @@ def post_tts(data):
     headers = {
         'Connection': 'close'
     }
-    response = requests.post(url, json=data, headers=headers, stream=True)
+    response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
         return response.content  # 返回音频流
     else:
@@ -133,6 +133,6 @@ except:
 if language == "zh_CN" or language=="en_US":
     lang=language
 if lang == "zh_CN":
-    NODE_DISPLAY_NAME_MAPPINGS = {"gpt_sovits": "GPT-SoVITS"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"gpt_sovits": "🖥️GPT-SoVITS"}
 else:
-    NODE_DISPLAY_NAME_MAPPINGS = {"gpt_sovits": "GPT-SoVITS"}
+    NODE_DISPLAY_NAME_MAPPINGS = {"gpt_sovits": "🖥️GPT-SoVITS"}

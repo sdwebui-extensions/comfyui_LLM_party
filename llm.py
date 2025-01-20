@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime
 import gc
@@ -13,9 +14,10 @@ import re
 import sys
 import time
 import traceback
-import google.generativeai as genai
+# import google.generativeai as genai
 import numpy as np
 import openai
+import aisuite as ai
 import requests
 import torch
 from PIL import Image
@@ -29,11 +31,12 @@ from transformers import (
     AutoConfig,
 )
 import PIL.Image
+from openai import AzureOpenAI,OpenAI
 if torch.cuda.is_available():
     from transformers import BitsAndBytesConfig
 from google.protobuf.struct_pb2 import Struct
 from torchvision.transforms import ToPILImage
-
+from .config_update import models_dict
 from .config import config_key, config_path, current_dir_path, load_api_keys
 from .tools.lorebook import Lorebook
 from .tools.api_tool import (
@@ -58,15 +61,13 @@ from .tools.custom_persona import custom_persona
 from .tools.dialog import end_dialog, start_dialog,start_anything,end_anything
 from .tools.dingding import Dingding, Dingding_tool, send_dingding
 from .tools.end_work import end_workflow, img2path
-from .tools.excel import image_iterator, load_excel,json_iterator
+from .tools.excel import image_iterator, load_excel,json_iterator,file_path_iterator
 from .tools.feishu import feishu, feishu_tool, send_feishu
-from .tools.file_combine import file_combine, file_combine_plus
+from .tools.file_combine import file_combine, file_combine_plus,string_combine, string_combine_plus
 from .tools.get_time import get_time, time_tool
 from .tools.get_weather import (
     accuweather_tool,
     get_accuweather,
-    get_weather,
-    weather_tool,
 )
 from .tools.git_tool import github_tool, search_github_repositories
 from .tools.image import CLIPTextEncode_party, KSampler_party, VAEDecode_party
@@ -131,9 +132,9 @@ from .tools.search_web import (
     search_duckduckgo,
 )
 from .tools.show_text import About_us, show_text_party
-from .tools.smalltool import bool_logic, load_int, none2false,str2float,str2int,any2str
+from .tools.smalltool import bool_logic, load_int, none2false,str2float,str2int,any2str,load_float,load_bool
 from .tools.story import read_story_json, story_json_tool
-from .tools.text_iterator import text_iterator,text_writing
+from .tools.text_iterator import text_iterator,text_writing,json_writing
 from .tools.tool_combine import tool_combine, tool_combine_plus
 from .tools.translate_persona import translate_persona
 from .tools.tts import openai_tts
@@ -146,7 +147,6 @@ from .tools.workflow_V2 import workflow_transfer_v2
 import folder_paths
 _TOOL_HOOKS = [
     "get_time",
-    "get_weather",
     "search_web",
     "search_web_bing",
     "check_web",
@@ -223,6 +223,7 @@ def another_llm(id, type, question):
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
         ) = llm.list
         res, _, _, _ = llm.chatbot(
             question,
@@ -244,6 +245,7 @@ def another_llm(id, type, question):
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
         )
     elif type == "local":
         try:
@@ -273,6 +275,8 @@ def another_llm(id, type, question):
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
+            is_enable_system_role,
         ) = llm.list
         res, _, _, _ = llm.chatbot(
             question,
@@ -294,6 +298,8 @@ def another_llm(id, type, question):
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
+            is_enable_system_role,
         )
     else:
         return "type参数错误，请使用api或local"
@@ -326,6 +332,23 @@ llm_tools = [
 def dispatch_tool(tool_name: str, tool_params: dict) -> str:
     if "multi_tool_use." in tool_name:
         tool_name = tool_name.replace("multi_tool_use.", "")
+    if '-' in tool_name and tool_name not in _TOOL_HOOKS:
+        from .custom_tool.mcp_cli import mcp_client as client
+        
+        async def run_client():
+            try:
+                # Initialize the client (if necessary)
+                if client.is_initialized is False:
+                    await client.initialize()
+                functions = await client.get_openai_functions()
+                # Call the tool and get the result
+                result = await client.call_tool(tool_name, tool_params)
+                return str(result)
+            except Exception as e:
+                return str(e)
+
+        # Run the async function using asyncio.run
+        return asyncio.run(run_client())
     if tool_name not in _TOOL_HOOKS:
         return f"Tool `{tool_name}` not found. Please use a provided tool."
     tool_call = globals().get(tool_name)
@@ -342,6 +365,9 @@ def dispatch_tool(tool_name: str, tool_params: dict) -> str:
     except:
         ret = traceback.format_exc()
     return str(ret)
+
+
+"""
 def convert_to_gemini(openai_history):
     for entry in openai_history:
         role = entry["role"]
@@ -370,6 +396,7 @@ def convert_tool_to_gemini(openai_tools):
         gemini_tools.append(gemini_tool)
     return gemini_tools
 
+
 class genChat:
     def __init__(self, model_name, apikey) -> None:
         self.model_name = model_name
@@ -393,11 +420,15 @@ class genChat:
             # Function to convert OpenAI history to Gemini history
             System_prompt= convert_to_gemini(history)
             if images is not None:
-                i = 255.0 * images[0].cpu().numpy()
-                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                new_message = {"role": "user", "parts": [{"text": user_prompt},{"inline_data": img}]}
+                new_parts = [{"text": user_prompt}]
+                for image in images:
+                    i = 255.0 * image.cpu().numpy()
+                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                    new_parts.append({"inline_data": img})
+                new_message = {"role": "user", "parts": new_parts}
             else:
                 new_message = {"role": "user", "parts": [{"text": user_prompt}]}
+
             
             history.append(new_message)
             tools = convert_tool_to_gemini(tools)
@@ -466,7 +497,7 @@ class genChat:
         except Exception as e:
             return str(e), history
         return text, history
-
+"""
 
 class Chat:
     def __init__(self, model_name, apikey, baseurl) -> None:
@@ -487,69 +518,78 @@ class Chat:
         **extra_parameters,
     ):
         try:
+            is_azure=False
             if images is not None:
                 if imgbb_api_key == "" or imgbb_api_key is None:
                     imgbb_api_key = api_keys.get("imgbb_api")
                 if imgbb_api_key == "" or imgbb_api_key is None:
-                    i = 255.0 * images[0].cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                    # 将图片保存到缓冲区
-                    buffered = io.BytesIO()
-                    img.save(buffered, format="PNG")
-                    # 将图片编码为base64
-                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                    img_json = [
-                        {"type": "text", "text": user_prompt},
-                        {
+                    img_json = [{"type": "text", "text": user_prompt}]
+                    for image in images:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="PNG")
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        img_json.append({
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{img_str}"},
-                        },
-                    ]
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_str}"}
+                        })
                     user_prompt = img_json
                 else:
-                    i = 255.0 * images[0].cpu().numpy()
-                    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-                    # 将图片保存到缓冲区
-                    buffered = io.BytesIO()
-                    img.save(buffered, format="PNG")
-                    # 将图片编码为base64
-                    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                    url = "https://api.imgbb.com/1/upload"
-                    payload = {"key": imgbb_api_key, "image": img_str}
-                    # 向API发送POST请求
-                    response = requests.post(url, data=payload)
-                    # 检查请求是否成功
-                    if response.status_code == 200:
-                        # 解析响应以获取图片URL
-                        result = response.json()
-                        img_url = result["data"]["url"]
-                    else:
-                        return "Error: " + response.text
-                    img_json = [
-                        {"type": "text", "text": user_prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": img_url,
-                            },
-                        },
-                    ]
+                    img_json = [{"type": "text", "text": user_prompt}]
+                    for image in images:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="PNG")
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        url = "https://api.imgbb.com/1/upload"
+                        payload = {"key": imgbb_api_key, "image": img_str}
+                        response = requests.post(url, data=payload)
+                        if response.status_code == 200:
+                            result = response.json()
+                            img_url = result["data"]["url"]
+                            img_json.append({
+                                "type": "image_url",
+                                "image_url": {"url": img_url}
+                            })
+                        else:
+                            return "Error: " + response.text
                     user_prompt = img_json
-            if "o1" in self.model_name:
+
+            # 将history中的系统提示词部分如果为空，就剔除
+            for i in range(len(history)):
+                if history[i]["role"] == "system" and history[i]["content"] == "":
+                    history.pop(i)
+                    break
+            if re.search(r'o[1-3]', self.model_name):
                 # 将history中的系统提示词部分的角色换成user
                 for i in range(len(history)):
                     if history[i]["role"] == "system":
                         history[i]["role"] = "user"
                         history.append({"role": "assistant", "content": "好的，我会按照你的指示来操作"})
                         break
-            openai.api_key = self.apikey
-            openai.base_url = self.baseurl
+            openai_client = OpenAI(
+                    api_key= self.apikey,
+                    base_url=self.baseurl,
+                )
+            if "openai.azure.com" in self.baseurl:
+                # 获取API版本
+                api_version = self.baseurl.split("=")[-1].split("/")[0]
+                # 获取azure_endpoint
+                azure_endpoint = "https://"+self.baseurl.split("//")[1].split("/")[0]
+                azure = AzureOpenAI(
+                    api_key= self.apikey,
+                    api_version=api_version,
+                    azure_endpoint=azure_endpoint,
+                )
+                openai_client = azure
             new_message = {"role": "user", "content": user_prompt}
             history.append(new_message)
             print(history)
             if "o1" in self.model_name:
                 if tools is not None:
-                    response = openai.chat.completions.create(
+                    response = openai_client.chat.completions.create(
                         model=self.model_name,
                         messages=history,
                         tools=tools,
@@ -586,7 +626,7 @@ class Chat:
                                 "content": results,
                             }
                         )
-                        response = openai.chat.completions.create(
+                        response = openai_client.chat.completions.create(
                             model=self.model_name,
                             messages=history,
                             tools=tools,
@@ -594,7 +634,7 @@ class Chat:
                         )
                         print(response)
                 elif is_tools_in_sys_prompt == "enable":
-                    response = openai.chat.completions.create(
+                    response = openai_client.chat.completions.create(
                         model=self.model_name,
                         messages=history,
                         **extra_parameters,
@@ -622,21 +662,21 @@ class Chat:
                                 + "。请根据工具返回的结果继续回答我之前提出的问题。",
                             }
                         )
-                        response = openai.chat.completions.create(
+                        response = openai_client.chat.completions.create(
                             model=self.model_name,
                             messages=history,
                             **extra_parameters,
                         )
                         response_content = response.choices[0].message.content
                 else:
-                    response = openai.chat.completions.create(
+                    response = openai_client.chat.completions.create(
                         model=self.model_name,
                         messages=history,
                         **extra_parameters,
                     )
                     print(response)
             elif tools is not None:
-                response = openai.chat.completions.create(
+                response = openai_client.chat.completions.create(
                     model=self.model_name,
                     messages=history,
                     temperature=temperature,
@@ -676,7 +716,7 @@ class Chat:
                         }
                     )
                     try:
-                        response = openai.chat.completions.create(
+                        response = openai_client.chat.completions.create(
                             model=self.model_name,
                             messages=history,
                             tools=tools,
@@ -701,7 +741,7 @@ class Chat:
                             }
                         )
                         history.append({"role": "function", "name": response_content.name, "content": results})
-                        response = openai.chat.completions.create(
+                        response = openai_client.chat.completions.create(
                             model=self.model_name,
                             messages=history,
                             tools=tools,
@@ -726,7 +766,7 @@ class Chat:
                         }
                     )
                     history.append({"role": "function", "name": function_name, "content": results})
-                    response = openai.chat.completions.create(
+                    response = openai_client.chat.completions.create(
                         model=self.model_name,
                         messages=history,
                         tools=tools,
@@ -737,7 +777,7 @@ class Chat:
                 response_content = response.choices[0].message.content
                 print(response)
             elif is_tools_in_sys_prompt == "enable":
-                response = openai.chat.completions.create(
+                response = openai_client.chat.completions.create(
                     model=self.model_name,
                     messages=history,
                     temperature=temperature,
@@ -767,7 +807,7 @@ class Chat:
                             + "。请根据工具返回的结果继续回答我之前提出的问题。",
                         }
                     )
-                    response = openai.chat.completions.create(
+                    response = openai_client.chat.completions.create(
                         model=self.model_name,
                         messages=history,
                         temperature=temperature,
@@ -776,7 +816,7 @@ class Chat:
                     )
                     response_content = response.choices[0].message.content
             else:
-                response = openai.chat.completions.create(
+                response = openai_client.chat.completions.create(
                     model=self.model_name,
                     messages=history,
                     temperature=temperature,
@@ -790,6 +830,255 @@ class Chat:
         return response_content, history
 
 folder_paths.folder_names_and_paths["llm_api_config"] = ([os.path.join(folder_paths.models_dir, "llm_api_config")], {'.json'})
+
+class aisuite_Chat:
+    def __init__(self, provider,model_name, apikey, baseurl,aws_access_key_id,aws_secret_access_key, aws_region_name,google_project_id,google_region,google_application_credentials,hf_api_token) -> None:
+        self.model_name = f"{provider}:{model_name}"
+        self.apikey = apikey
+        self.baseurl = baseurl
+        self.provider_configs = {}
+        if provider == "openai":
+            self.provider_configs["openai"] ={
+                    "api_key": apikey,
+                    "base_url": baseurl if baseurl != "" else "https://api.openai.com/v1"
+                }
+        elif provider == "anthropic":
+            self.provider_configs["anthropic"] ={
+                    "api_key": apikey,
+                    "base_url": baseurl if baseurl != "" else "https://api.anthropic.com/v1"
+                }
+        elif provider == "azure":
+            self.provider_configs["azure"] ={
+                    "api_key": apikey,
+                    "base_url": baseurl if baseurl != "" else "https://openai.azure.com/"
+                }
+        elif provider == "aws":
+            os.environ['AWS_ACCESS_KEY'] = aws_access_key_id
+            os.environ['AWS_SECRET_KEY'] = aws_secret_access_key
+            os.environ['AWS_REGION_NAME'] = aws_region_name
+        elif provider == "google":
+            os.environ['GOOGLE_PROJECT_ID'] = google_project_id
+            os.environ['GOOGLE_REGION'] = google_region
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] =  google_application_credentials
+        elif provider == "huggingface":
+            os.environ['HUGGINGFACE_API_TOKEN'] = hf_api_token
+
+    def send(
+        self,
+        user_prompt,
+        temperature,
+        max_length,
+        history,
+        tools=None,
+        is_tools_in_sys_prompt="disable",
+        images=None,
+        imgbb_api_key="",
+        **extra_parameters,
+    ):
+        try:
+            openai_client = ai.Client(self.provider_configs)
+            if images is not None:
+                if imgbb_api_key == "" or imgbb_api_key is None:
+                    imgbb_api_key = api_keys.get("imgbb_api")
+                if imgbb_api_key == "" or imgbb_api_key is None:
+                    img_json = [{"type": "text", "text": user_prompt}]
+                    for image in images:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="PNG")
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        img_json.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_str}"}
+                        })
+                    user_prompt = img_json
+                else:
+                    img_json = [{"type": "text", "text": user_prompt}]
+                    for image in images:
+                        i = 255.0 * image.cpu().numpy()
+                        img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="PNG")
+                        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        url = "https://api.imgbb.com/1/upload"
+                        payload = {"key": imgbb_api_key, "image": img_str}
+                        response = requests.post(url, data=payload)
+                        if response.status_code == 200:
+                            result = response.json()
+                            img_url = result["data"]["url"]
+                            img_json.append({
+                                "type": "image_url",
+                                "image_url": {"url": img_url}
+                            })
+                        else:
+                            return "Error: " + response.text
+                    user_prompt = img_json
+
+            # 将history中的系统提示词部分如果为空，就剔除
+            for i in range(len(history)):
+                if history[i]["role"] == "system" and history[i]["content"] == "":
+                    history.pop(i)
+                    break
+            new_message = {"role": "user", "content": user_prompt}
+            history.append(new_message)
+            print(history)
+            if tools is not None:
+                response = openai_client.chat.completions.create(
+                    model=self.model_name,
+                    messages=history,
+                    temperature=temperature,
+                    tools=tools,
+                    max_tokens=max_length,
+                    **extra_parameters,
+                )
+                while response.choices[0].message.tool_calls:
+                    assistant_message = response.choices[0].message
+                    response_content = assistant_message.tool_calls[0].function
+                    print("正在调用" + response_content.name + "工具")
+                    print(response_content.arguments)
+                    results = dispatch_tool(response_content.name, json.loads(response_content.arguments))
+                    print(results)
+                    history.append(
+                        {
+                            "tool_calls": [
+                                {
+                                    "id": assistant_message.tool_calls[0].id,
+                                    "function": {
+                                        "arguments": response_content.arguments,
+                                        "name": response_content.name,
+                                    },
+                                    "type": assistant_message.tool_calls[0].type,
+                                }
+                            ],
+                            "role": "assistant",
+                            "content": str(response_content),
+                        }
+                    )
+                    history.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": assistant_message.tool_calls[0].id,
+                            "name": response_content.name,
+                            "content": results,
+                        }
+                    )
+                    try:
+                        response = openai_client.chat.completions.create(
+                            model=self.model_name,
+                            messages=history,
+                            tools=tools,
+                            temperature=temperature,
+                            max_tokens=max_length,
+                            **extra_parameters,
+                        )
+                        print(response)
+                    except Exception as e:
+                        print("tools calling失败，尝试使用function calling" + str(e))
+                        # 删除history最后两个元素
+                        history.pop()
+                        history.pop()
+                        history.append(
+                            {
+                                "role": "assistant",
+                                "content": str(response_content),
+                                "function_call": {
+                                    "name": response_content.name,
+                                    "arguments": response_content.arguments,
+                                },
+                            }
+                        )
+                        history.append({"role": "function", "name": response_content.name, "content": results})
+                        response = openai_client.chat.completions.create(
+                            model=self.model_name,
+                            messages=history,
+                            tools=tools,
+                            temperature=temperature,
+                            max_tokens=max_length,
+                            **extra_parameters,
+                        )
+                        print(response)
+                while response.choices[0].message.function_call:
+                    assistant_message = response.choices[0].message
+                    function_call = assistant_message.function_call
+                    function_name = function_call.name
+                    function_arguments = json.loads(function_call.arguments)
+                    print("正在调用" + function_name + "工具")
+                    results = dispatch_tool(function_name, function_arguments)
+                    print(results)
+                    history.append(
+                        {
+                            "role": "assistant",
+                            "content": str(function_call),
+                            "function_call": {"name": function_name, "arguments": function_arguments},
+                        }
+                    )
+                    history.append({"role": "function", "name": function_name, "content": results})
+                    response = openai_client.chat.completions.create(
+                        model=self.model_name,
+                        messages=history,
+                        tools=tools,
+                        temperature=temperature,
+                        max_tokens=max_length,
+                        **extra_parameters,
+                    )
+                response_content = response.choices[0].message.content
+                print(response)
+            elif is_tools_in_sys_prompt == "enable":
+                response = openai_client.chat.completions.create(
+                    model=self.model_name,
+                    messages=history,
+                    temperature=temperature,
+                    max_tokens=max_length,
+                    **extra_parameters,
+                )
+                response_content = response.choices[0].message.content
+                # 正则表达式匹配
+                pattern = r'\{\s*"tool":\s*"(.*?)",\s*"parameters":\s*\{(.*?)\}\s*\}'
+                while re.search(pattern, response_content, re.DOTALL) != None:
+                    match = re.search(pattern, response_content, re.DOTALL)
+                    tool = match.group(1)
+                    parameters = match.group(2)
+                    json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
+                    print("正在调用" + tool + "工具")
+                    parameters = json.loads("{" + parameters + "}")
+                    results = dispatch_tool(tool, parameters)
+                    print(results)
+                    history.append({"role": "assistant", "content": json_str})
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": "调用"
+                            + tool
+                            + "工具返回的结果为："
+                            + results
+                            + "。请根据工具返回的结果继续回答我之前提出的问题。",
+                        }
+                    )
+                    response = openai_client.chat.completions.create(
+                        model=self.model_name,
+                        messages=history,
+                        temperature=temperature,
+                        max_tokens=max_length,
+                        **extra_parameters,
+                    )
+                    response_content = response.choices[0].message.content
+            else:
+                response = openai_client.chat.completions.create(
+                    model=self.model_name,
+                    messages=history,
+                    temperature=temperature,
+                    max_tokens=max_length,
+                    **extra_parameters,
+                )
+            response_content = response.choices[0].message.content
+            history.append({"role": "assistant", "content": response_content})
+        except Exception as ex:
+            response_content = str(ex)
+        return response_content, history
+
+
+
 class LLM_api_loader:
     def __init__(self):
         pass
@@ -798,33 +1087,36 @@ class LLM_api_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": ("STRING", {"default": "gpt-4o-mini"}),
+                "model_name": ("STRING", {"default": "gpt-4o-mini","tooltip": "The name of the model, such as gpt-4o-mini."}),
             },
             "optional": {
                 "base_url": (
                     "STRING",
                     {
-                        "default": "https://api.openai.com/v1/",
+                        "default": "",
+                        "tooltip": "The base URL of the API, such as https://api.openai.com/v1.",
                     },
                 ),
                 "api_key": (
                     "STRING",
                     {
-                        "default": "sk-XXXXX",
+                        "default": "",
+                        "tooltip": "The API key for the API."
                     },
                 ),
-                "is_ollama": ("BOOLEAN", {"default": False}),
+                "is_ollama": ("BOOLEAN", {"default": False, "tooltip": "Whether to use ollama."}),
             },
         }
 
     RETURN_TYPES = ("CUSTOM",)
     RETURN_NAMES = ("model",)
-
+    OUTPUT_TOOLTIPS = ("The loaded model.",)
+    DESCRIPTION = "Load the model in openai format."
     FUNCTION = "chatbot"
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def chatbot(self, model_name, base_url=None, api_key=None, is_ollama=False):
         if is_ollama:
@@ -847,28 +1139,132 @@ class LLM_api_loader:
             elif api_keys.get("base_url") != "":
                 openai.base_url = api_keys.get("base_url")
             if openai.api_key == "":
-                return ("请输入API_KEY",)
+                api_keys = load_api_keys(config_path)
+                openai.api_key = api_keys.get("openai_api_key")
+                openai.base_url = api_keys.get("base_url")
             if openai.base_url != "":
                 if openai.base_url[-1] != "/":
                     openai.base_url = openai.base_url + "/"
 
         chat = Chat(model_name, openai.api_key, openai.base_url)
         return (chat,)
-llm_api_keys = load_api_keys(config_path)
-llm_api_key=llm_api_keys.get("openai_api_key").strip()
-llm_base_url=llm_api_keys.get("base_url").strip()
-if llm_api_key == "" or llm_api_key =="sk-XXXXX" or llm_base_url == "":
-    models_dict =[]
-else:
-    try:
-        client = openai.OpenAI(api_key=llm_api_key, base_url=llm_base_url)
-        models_response = client.models.list()
-        # 将模型列表转换为字典
-        models_dict = [model.id for model in models_response.data]
-        openai.api_key=llm_api_key
-        openai.base_url=llm_base_url+"/"
-    except Exception as e:
-        models_dict = []
+    
+class aisuite_loader:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "provider": (["openai","anthropic","aws","azure","vertex","huggingface"], {"default": "openai","tooltip": "API interface type"}),
+                "model_name": ("STRING", {"default": "gpt-4o-mini", "tooltip": "The name of the model, such as gpt-4o-mini."}),
+            },
+            "optional": {
+                "base_url": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The base URL of the API, such as https://api.openai.com/v1.",
+                    },
+                ),
+                "api_key": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The API key for the API."
+                    },
+                ),
+                "aws_access_key_id":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The AWS access key ID."
+                    }
+                ),
+                "aws_secret_access_key":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The AWS secret access key."
+                    }
+                ),
+                "aws_region_name":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The AWS region name."
+                    }
+                ),
+                "google_project_id":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The Google project ID."
+                    }
+                ),
+                "google_region":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The Google region."
+                    }
+                ),
+                "google_application_credentials":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The Google application credentials."
+                    }
+                ),
+                "hf_api_token":(
+                    "STRING",
+                    {
+                        "default": "",
+                        "tooltip": "The Hugging Face API token."
+                    }
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("CUSTOM",)
+    RETURN_NAMES = ("model",)
+    OUTPUT_TOOLTIPS = ("The loaded model.",)
+    DESCRIPTION = "Load the model in aisuite format."
+    FUNCTION = "chatbot"
+
+    # OUTPUT_NODE = False
+
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
+
+    def chatbot(self, provider,model_name,aws_access_key_id,aws_secret_access_key, aws_region_name,google_project_id,google_region,google_application_credentials,hf_api_token, base_url=None, api_key=None):
+        api_keys = load_api_keys(config_path)
+        if api_key != "":
+            openai.api_key = api_key
+        elif model_name in config_key:
+            api_keys = config_key[model_name]
+            openai.api_key = api_keys.get("api_key")
+        elif api_keys.get("openai_api_key") != "":
+            openai.api_key = api_keys.get("openai_api_key")
+        if base_url != "":
+            openai.base_url = base_url
+        elif model_name in config_key:
+            api_keys = config_key[model_name]
+            openai.base_url = api_keys.get("base_url")
+        elif api_keys.get("base_url") != "":
+            openai.base_url = api_keys.get("base_url")
+        if openai.api_key == "":
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
+        if openai.base_url != "":
+            if openai.base_url[-1] != "/":
+                openai.base_url = openai.base_url + "/"
+
+        chat = aisuite_Chat(provider,model_name, openai.api_key, openai.base_url,aws_access_key_id,aws_secret_access_key, aws_region_name,google_project_id,google_region,google_application_credentials,hf_api_token)
+        return (chat,)
+
+
 class easy_LLM_api_loader:
     def __init__(self):
         pass
@@ -877,23 +1273,27 @@ class easy_LLM_api_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": (models_dict, {"default": "gpt-4o-mini"}),
+                "model_name": (models_dict, {"default": "", "tooltip": "The model name."}),
             },
         }
 
     RETURN_TYPES = ("CUSTOM",)
     RETURN_NAMES = ("model",)
-
+    OUTPUT_TOOLTIPS = ("The loaded model.",)
     FUNCTION = "chatbot"
-
+    DESCRIPTION = "Load a model from the Easy mode."
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def chatbot(self, model_name):
+        # 如果openai.base_url没有/结尾就加一个
+        if openai.base_url != "":
+            if openai.base_url[-1] != "/":
+                openai.base_url = openai.base_url + "/"
         chat = Chat(model_name, openai.api_key, openai.base_url)
         return (chat,)
-
+"""
 class genai_api_loader:
     def __init__(self):
         pass
@@ -908,7 +1308,7 @@ class genai_api_loader:
                 "api_key": (
                     "STRING",
                     {
-                        "default": "AI-XXXXX",
+                        "default": "",
                     },
                 ),
             },
@@ -921,7 +1321,7 @@ class genai_api_loader:
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def chatbot(self, model_name, api_key=None):
         api_keys = load_api_keys(config_path)
@@ -933,11 +1333,13 @@ class genai_api_loader:
         elif api_keys.get("openai_api_key") != "":
             api_key = api_keys.get("openai_api_key")
         if api_key == "":
-            return ("请输入API_KEY",)
+            api_keys = load_api_keys(config_path)
+            openai.api_key = api_keys.get("openai_api_key")
+            openai.base_url = api_keys.get("base_url")
 
         chat = genChat(model_name, api_key)
         return (chat,)
-
+"""
 class LLM:
     def __init__(self):
         current_time = datetime.datetime.now()
@@ -969,38 +1371,41 @@ class LLM:
         paths.insert(0, "")
         return {
             "required": {
-                "system_prompt": ("STRING", {"multiline": True, "default": "你一个强大的人工智能助手。"}),
+                "system_prompt": ("STRING", {"multiline": True, "default": "你一个强大的人工智能助手。","tooltip": "System prompt, used to describe the behavior of the model and the expected output format."}),
                 "user_prompt": (
                     "STRING",
                     {
                         "multiline": True,
                         "default": "你好",
+                        "tooltip": "User prompt, used to describe the user's request and the expected output format."
                     },
                 ),
-                "model": ("CUSTOM", {}),
-                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "is_memory": (["enable", "disable"], {"default": "enable"}),
-                "is_tools_in_sys_prompt": (["enable", "disable"], {"default": "disable"}),
-                "is_locked": (["enable", "disable"], {"default": "disable"}),
-                "main_brain": (["enable", "disable"], {"default": "enable"}),
-                "max_length": ("INT", {"default": 1920, "min": 256, "max": 128000, "step": 128}),
+                "model": ("CUSTOM", {"tooltip": "The model to use for the LLM."}),
+                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1,"tooltip": "The temperature parameter controls the randomness of the model's output. A higher temperature will result in more random and diverse responses, while a lower temperature will result in more focused and deterministic responses."}),
+                "is_memory": (["enable", "disable"], {"default": "enable", "tooltip": "Whether to enable memory for the LLM."}),
+                "is_tools_in_sys_prompt": (["enable", "disable"], {"default": "disable", "tooltip": "Integrate the tool list into the system prompt, thereby granting some models temporary capability to invoke tools."}),
+                "is_locked": (["enable", "disable"], {"default": "disable", "tooltip": "Whether to directly output the result from the last output."}),
+                "main_brain": (["enable", "disable"], {"default": "enable", "tooltip": "If this option is disabled, the LLM will become a tool that can be invoked by other LLMs."}),
+                "max_length": ("INT", {"default": 1920, "min": 256, "max": 128000, "step": 128, "tooltip": "The maximum length of the output text."}),
             },
             "optional": {
-                "system_prompt_input": ("STRING", {"forceInput": True}),
-                "user_prompt_input": ("STRING", {"forceInput": True}),
-                "tools": ("STRING", {"forceInput": True}),
-                "file_content": ("STRING", {"forceInput": True}),
-                "images": ("IMAGE", {"forceInput": True}),
+                "system_prompt_input": ("STRING", {"forceInput": True, "tooltip": "System prompt input, used to describe the system's request and the expected output format."}),
+                "user_prompt_input": ("STRING", {"forceInput": True, "tooltip": "User prompt input, used to describe the user's request and the expected output format."}),
+                "tools": ("STRING", {"forceInput": True, "tooltip": "Tool list, used to describe the tools that the model can invoke."}),
+                "file_content": ("STRING", {"forceInput": True, "tooltip": "Input the contents of the file here."}),
+                "images": ("IMAGE", {"forceInput": True, "tooltip": "Upload images here."}),
                 "imgbb_api_key": (
                     "STRING",
                     {
                         "default": "",
+                        "tooltip": "Optional, if not filled out, it will be passed to the LLM in the form of a base64 encoded string. API key for ImgBB, used to upload images to ImgBB and get the image URL."
                     },
                 ),
-                "conversation_rounds": ("INT", {"default": 100, "min": 1, "max": 10000}),
-                "historical_record": (paths, {"default": ""}),
-                "is_enable": ("BOOLEAN", {"default": True}),
-                "extra_parameters": ("DICT", {"forceInput": True}),
+                "conversation_rounds": ("INT", {"default": 100, "min": 1, "max": 10000, "step": 1, "tooltip": "The maximum number of dialogue turns that the LLM can see in the history records, where one question and one answer constitute one turn."}),
+                "historical_record": (paths, {"default": "", "tooltip": "The dialogue history file is optional; if not selected and left empty, a new dialogue history file will be automatically created."}),
+                "is_enable": ("BOOLEAN", {"default": True, "tooltip": "Whether to enable the LLM."}),
+                "extra_parameters": ("DICT", {"forceInput": True, "tooltip": "Extra parameters for the LLM."}),
+                "user_history": ("STRING", {"forceInput": True, "tooltip": "User history, you can directly input a JSON string containing multiple rounds of dialogue here."}),
             },
         }
 
@@ -1016,7 +1421,13 @@ class LLM:
         "tool",
         "image",
     )
-
+    OUTPUT_TOOLTIPS = (
+        "The assistant's response to the user's request.",
+        "The dialogue history",
+        "This interface will connect this LLM as a tool to other LLMs.",
+        "Images generated or fetched by the LLM.",
+    )
+    DESCRIPTION = "The API version of the model chain, compatible with all API interfaces."
     FUNCTION = "chatbot"
 
     # OUTPUT_NODE = False
@@ -1044,6 +1455,7 @@ class LLM:
         historical_record="",
         is_enable=True,
         extra_parameters=None,
+        user_history=None,
     ):
         if not is_enable:
             return (
@@ -1071,6 +1483,7 @@ class LLM:
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
         ]
         if user_prompt is None:
             user_prompt = user_prompt_input
@@ -1117,7 +1530,7 @@ class LLM:
         ]
 
         llm_tools_json = json.dumps(llm_tools, ensure_ascii=False, indent=4)
-        if (user_prompt is None or user_prompt.strip() == "") and (images is None or images == []):
+        if (user_prompt is None or user_prompt.strip() == "") and (images is None or images == []) and (user_history is None or user_history == [] or user_history.strip() == ""):
             with open(self.prompt_path, "r", encoding="utf-8") as f:
                 history = json.load(f)
             return (
@@ -1144,6 +1557,11 @@ class LLM:
 
                 with open(self.prompt_path, "r", encoding="utf-8") as f:
                     history = json.load(f)
+                if user_history != "" and user_history is not None:
+                    try:
+                        history = json.loads(user_history)
+                    except:
+                        pass
                 history_temp = [history[0]]
                 elements_to_keep = 2 * conversation_rounds
                 if elements_to_keep < len(history) - 1:
@@ -1220,16 +1638,9 @@ class LLM:
                 max_length = int(max_length)
 
                 if file_content is not None:
-                    user_prompt = (
-                        "文件中相关内容："
-                        + file_content
-                        + "\n"
-                        + "用户提问："
-                        + user_prompt
-                        + "\n"
-                        + "请根据文件内容回答用户问题。\n"
-                        + "如果无法从文件内容中找到答案，请回答“抱歉，我无法从文件内容中找到答案。”"
-                    )
+                    for message in history:
+                        if message["role"] == "system":
+                            message["content"] += "\n以下是可以参考的已知信息:\n" + file_content
                 if extra_parameters is not None and extra_parameters != {}:
                     response, history = model.send(
                         user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key, **extra_parameters
@@ -1248,7 +1659,11 @@ class LLM:
                     json.dump(history, f, indent=4, ensure_ascii=False)
                 history = json.dumps(history, ensure_ascii=False,indent=4)
                 global image_buffer
-                image_out = image_buffer
+                if image_buffer != [] and image_buffer is not None:
+                    image_out = image_buffer.clone()
+                else:
+                    image_out = None
+                image_buffer = []
                 return (
                     response,
                     history,
@@ -1365,20 +1780,22 @@ class LLM_local_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name_or_path": ("STRING", {"default": ""}),
+                "model_name_or_path": ("STRING", {"default": "","tooltip": "You can provide the absolute path to the model folder, or you can enter the repo ID from Hugging Face, for example: lllyasviel/omost-llama-3-8b-4bits."}),
                 "device": (
                     ["auto", "cuda", "cpu", "mps"],
                     {
                         "default": "auto",
+                        "tooltip": "The device to use for the model. If 'auto', it will use 'cuda' if available, otherwise 'mps' if available, otherwise 'cpu'.",
                     },
                 ),
                 "dtype": (
                     ["float32", "float16","bfloat16", "int8", "int4"],
                     {
                         "default": "float32",
+                        "tooltip": "The data type to use for the model. If 'float32', it will use 'float32', otherwise 'float16', 'bfloat16', 'int8', 'int4'.",
                     },
                 ),
-                "is_locked": ("BOOLEAN", {"default": True}),
+                "is_locked": ("BOOLEAN", {"default": True, "tooltip": "Whether the model is locked or not.When enabled, it prevents the model from being loaded multiple times. When disabled, it can be used in conjunction with clearing the GPU memory node to reload the model."}),
             }
         }
 
@@ -1390,12 +1807,16 @@ class LLM_local_loader:
         "model",
         "tokenizer",
     )
-
+    OUTPUT_TOOLTIPS = (
+        "The loaded model.",
+        "The loaded tokenizer.",
+    )
     FUNCTION = "chatbot"
+    DESCRIPTION = "Load a local model from a given path or Hugging Face repo ID.The model must not be in GGUF format but instead be an LLM model stored in a folder."
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def chatbot(self, model_name_or_path, device, dtype, is_locked=True):
         self.is_locked = is_locked
@@ -1476,20 +1897,22 @@ class easy_LLM_local_loader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name_or_path": (LLM_list, {"default": ""}),
+                "model_name_or_path": (LLM_list, {"default": "","tooltip": "Select your model files from custom_nodes\comfyui_LLM_party\model\LLM."}),
                 "device": (
                     ["auto", "cuda", "cpu", "mps"],
                     {
                         "default": "auto",
+                        "tooltip": "Select the device to load the model on. 'auto' will use the best available device.",
                     },
                 ),
                 "dtype": (
                     ["float32", "float16","bfloat16", "int8", "int4"],
                     {
                         "default": "float32",
+                        "tooltip": "The data type to use for the model. If 'float32', it will use 'float32', otherwise 'float16', 'bfloat16', 'int8', 'int4'.",
                     },
                 ),
-                "is_locked": ("BOOLEAN", {"default": True}),
+                "is_locked": ("BOOLEAN", {"default": True, "tooltip": "Whether the model is locked or not.When enabled, it prevents the model from being loaded multiple times. When disabled, it can be used in conjunction with clearing the GPU memory node to reload the model."}),
             }
         }
 
@@ -1501,22 +1924,27 @@ class easy_LLM_local_loader:
         "model",
         "tokenizer",
     )
+    OUTPUT_TOOLTIPS = (
+        "The loaded model.",
+        "The loaded tokenizer."
+    )
+    DESCRIPTION = "Load a local model from custom_nodes\comfyui_LLM_party\model\LLM."
 
     FUNCTION = "chatbot"
 
     # OUTPUT_NODE = False
 
-    CATEGORY = "大模型派对（llm_party）/加载器（loader）"
+    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
 
     def chatbot(self, model_name_or_path, device, dtype, is_locked=True):
         model_name_or_path=os.path.join(LLM_dir,model_name_or_path)
         self.is_locked = is_locked
         if self.is_locked == False:
-            setattr(LLM_local_loader, "IS_CHANGED", LLM_local_loader.original_IS_CHANGED)
+            setattr(easy_LLM_local_loader, "IS_CHANGED", easy_LLM_local_loader.original_IS_CHANGED)
         else:
             # 如果方法存在，则删除
-            if hasattr(LLM_local_loader, "IS_CHANGED"):
-                delattr(LLM_local_loader, "IS_CHANGED")
+            if hasattr(easy_LLM_local_loader, "IS_CHANGED"):
+                delattr(easy_LLM_local_loader, "IS_CHANGED")
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -1604,38 +2032,42 @@ class LLM_local:
         paths.insert(0, "")
         return {
             "required": {
-                "model": ("CUSTOM", {}),
-                "system_prompt": ("STRING", {"multiline": True, "default": "你一个强大的人工智能助手。"}),
+                "model": ("CUSTOM", {"tooltip": "The model to use for the LLM."}),
+                "system_prompt": ("STRING", {"multiline": True, "default": "你一个强大的人工智能助手。","tooltip": "System prompt, used to describe the behavior of the model and the expected output format."}),
                 "user_prompt": (
                     "STRING",
                     {
                         "multiline": True,
                         "default": "你好",
+                        "tooltip": "User prompt, used to describe the user's request and the expected output format.",
                     },
                 ),
                 "model_type": (
                     ["LLM","LLM-GGUF", "VLM-GGUF", "VLM(testing)"],
                     {
                         "default": "LLM",
+                        "tooltip": "The type of model to use for the LLM. LLM: Language Model, VLM: Vision Language Model, GGUF: Generalized GPT-4 Unified Framework",
                     },
                 ),
-                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "max_length":("INT", {"default": 512, "min": 256, "max": 128000, "step": 128}),
-                "is_memory": (["enable", "disable"], {"default": "enable"}),
-                "is_locked": (["enable", "disable"], {"default": "disable"}),
-                "main_brain": (["enable", "disable"], {"default": "enable"}),
+                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1,"tooltip": "The temperature parameter controls the randomness of the model's output. A higher temperature will result in more random and diverse responses, while a lower temperature will result in more focused and deterministic responses."}),
+                "max_length":("INT", {"default": 512, "min": 256, "max": 128000, "step": 128,"tooltip": "The maximum length of the output text."}),
+                "is_memory": (["enable", "disable"], {"default": "enable","tooltip": "Whether to enable memory for the LLM."}),
+                "is_locked": (["enable", "disable"], {"default": "disable", "tooltip": "Whether to directly output the result from the last output."}),
+                "main_brain": (["enable", "disable"], {"default": "enable", "tooltip": "If this option is disabled, the LLM will become a tool that can be invoked by other LLMs."}),
             },
             "optional": {
-                "tokenizer": ("CUSTOM", {}),
-                "image": ("IMAGE", {"forceInput": True}),
-                "system_prompt_input": ("STRING", {"forceInput": True}),
-                "user_prompt_input": ("STRING", {"forceInput": True}),
-                "tools": ("STRING", {"forceInput": True}),
-                "file_content": ("STRING", {"forceInput": True}),
-                "conversation_rounds": ("INT", {"default": 100, "min": 1, "max": 10000}),
-                "historical_record": (paths, {"default": ""}),
-                "is_enable": ("BOOLEAN", {"default": True}),
-                "extra_parameters": ("DICT", {"forceInput": True}),
+                "tokenizer": ("CUSTOM", {"tooltip":"The tokenizer to use for the LLM."}),
+                "image": ("IMAGE", {"forceInput": True, "tooltip": "Upload images here."}),
+                "system_prompt_input": ("STRING", {"forceInput": True, "tooltip": "System prompt input, used to describe the system's request and the expected output format."}),
+                "user_prompt_input": ("STRING", {"forceInput": True, "tooltip": "User prompt input, used to describe the user's request and the expected output format."}),
+                "tools": ("STRING", {"forceInput": True,"tooltip": "Tool list, used to describe the tools that the model can invoke."}),
+                "file_content": ("STRING", {"forceInput": True, "tooltip": "Input the contents of the file here."}),
+                "conversation_rounds": ("INT", {"default": 100, "min": 1, "max": 10000, "step": 1, "tooltip": "The maximum number of dialogue turns that the LLM can see in the history records, where one question and one answer constitute one turn."}),
+                "historical_record": (paths, {"default": "", "tooltip": "The dialogue history file is optional; if not selected and left empty, a new dialogue history file will be automatically created."}),
+                "is_enable": ("BOOLEAN", {"default": True, "tooltip": "Whether to enable the LLM."}),
+                "extra_parameters": ("DICT", {"forceInput": True, "tooltip": "Extra parameters for the LLM."}),
+                "user_history": ("STRING", {"forceInput": True, "tooltip": "User history, you can directly input a JSON string containing multiple rounds of dialogue here."}),
+                "is_enable_system_role": (["enable", "disable"], {"default": "enable","tooltip": "Whether to enable the system role for the LLM."}),
             },
         }
 
@@ -1651,6 +2083,13 @@ class LLM_local:
         "tool",
         "image",
     )
+    OUTPUT_TOOLTIPS = (
+        "The assistant's response to the user's request.",
+        "The dialogue history",
+        "This interface will connect this LLM as a tool to other LLMs.",
+        "Images generated or fetched by the LLM.",
+    )
+    DESCRIPTION = "The local version of the model chain, compatible with all local interfaces."
 
     FUNCTION = "chatbot"
 
@@ -1679,6 +2118,8 @@ class LLM_local:
         historical_record=None,
         is_enable=True,
         extra_parameters=None,
+        user_history=None,
+        is_enable_system_role="enable",
     ):
         if not is_enable:
             return (
@@ -1706,6 +2147,8 @@ class LLM_local:
             historical_record,
             is_enable,
             extra_parameters,
+            user_history,
+            is_enable_system_role,
         ]
         if user_prompt is None:
             user_prompt = user_prompt_input
@@ -1751,7 +2194,7 @@ class LLM_local:
             }
         ]
         llm_tools_json = json.dumps(llm_tools, ensure_ascii=False, indent=4)
-        if (user_prompt is None or user_prompt.strip() == "") and (image is None or image == []):
+        if (user_prompt is None or user_prompt.strip() == "") and (image is None or image == []) and (user_history is None or user_history == [] or user_history.strip() == ""):
             with open(self.prompt_path, "r", encoding="utf-8") as f:
                 history = json.load(f)
             return (
@@ -1776,6 +2219,11 @@ class LLM_local:
                         )
                 with open(self.prompt_path, "r", encoding="utf-8") as f:
                     history = json.load(f)
+                if user_history != "" and user_history is not None:
+                    try:
+                        history = json.loads(user_history)
+                    except:
+                        pass
                 history_temp = [history[0]]
                 elements_to_keep = 2 * conversation_rounds
                 if elements_to_keep < len(history) - 1:
@@ -1838,18 +2286,8 @@ class LLM_local:
                     if message["role"] == "system":
                         message["content"] = system_prompt
                         if tools_list != []:
-                            if model_type == "GLM3":
-                                message["content"] += "\n" + "你可以使用以下工具："
-                                message["tools"] = tools_list
-                            elif model_type in ["llama", "Qwen", "llaVa", "llama-guff"]:
+                            if model_type in ["LLM", "VLM(testing)"]:
                                 message["content"] += "\n" + TOOL_EAXMPLE + "\n" + GPT_INSTRUCTION + "\n"
-                                if "tools" in message:
-                                    # 如果存在，移除 'tools' 键值对
-                                    message.pop("tools")
-                        else:
-                            if "tools" in message:
-                                # 如果存在，移除 'tools' 键值对
-                                message.pop("tools")
                 if tools is not None:
                     print(tools)
                     tools = json.loads(tools)
@@ -1863,21 +2301,16 @@ class LLM_local:
 
                 max_length = int(max_length)
                 if file_content is not None:
-                    user_prompt = (
-                        "文件中相关内容："
-                        + file_content
-                        + "\n"
-                        + "用户提问："
-                        + user_prompt
-                        + "\n"
-                        + "请根据文件内容回答用户问题。\n"
-                        + "如果无法从文件内容中找到答案，请回答“抱歉，我无法从文件内容中找到答案。”"
-                    )
-
+                    for message in history:
+                        if message["role"] == "system":
+                            message["content"] += "\n以下是可以参考的已知信息:\n" + file_content
+                if is_enable_system_role == "disable":
+                    if history[0]["role"] == "system":
+                        history[0]["role"]= "user"
                 # 获得model存放的设备
                 if model_type not in ["VLM-GGUF", "LLM-GGUF"]:
                     device = next(model.parameters()).device
-                if model_type in ["LLM"]:
+                if model_type == "LLM":
                     if extra_parameters is not None and extra_parameters != {}:
                         response, history = llm_chat(
                             model,
@@ -1900,7 +2333,7 @@ class LLM_local:
                         tool = match.group(1)
                         parameters = match.group(2)
                         json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
-                        history.append({"role": "assistant", "content": json_str})
+                        history.append({"role": "function_call", "content": json_str})
                         print("正在调用" + tool + "工具")
                         parameters = json.loads("{" + parameters + "}")
                         results = dispatch_tool(tool, parameters)
@@ -1913,6 +2346,7 @@ class LLM_local:
                                 history,
                                 device,
                                 max_length,
+                                role="observation",
                                 temperature=temperature,
                                 **extra_parameters,
                             )
@@ -1929,19 +2363,21 @@ class LLM_local:
                             )
                 elif model_type == "VLM-GGUF":
                     if image is not None:
-                        pil_image = ToPILImage()(image[0].permute(2, 0, 1))
-                        # Convert the PIL image to a bytes buffer
-                        buffer = io.BytesIO()
-                        pil_image.save(buffer, format="PNG")  # You can change the format if needed
-                        # Encode the bytes to base64
-                        base64_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
                         user_content = {
                             "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_string}"}},
-                                {"type": "text", "text": user_prompt},
-                            ],
+                            "content": []
                         }
+                        for img_VLMG in image:
+                            pil_image = ToPILImage()(img_VLMG.permute(2, 0, 1))
+                            buffer = io.BytesIO()
+                            pil_image.save(buffer, format="PNG")
+                            base64_string = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                            user_content["content"].append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{base64_string}"}
+                            })
+                        user_content["content"].append({"type": "text", "text": user_prompt})
+
                         history.append(user_content)
                         if extra_parameters is not None and extra_parameters != {}:
                             response = model.create_chat_completion(
@@ -1980,13 +2416,43 @@ class LLM_local:
                         assistant_content = {"role": "assistant", "content": response}
                         history.append(assistant_content)
                 elif model_type == "LLM-GGUF":
-                        user_content = {"role": "user", "content": user_prompt}
-                        history.append(user_content)
+                    user_content = {"role": "user", "content": user_prompt}
+                    history.append(user_content)
+                    if extra_parameters is not None and extra_parameters != {}:
+                        response = model.create_chat_completion(
+                            messages=history,
+                            temperature=temperature,
+                            max_tokens=max_length,
+                            tools=tools,
+                            **extra_parameters,
+                        )
+                    else:
+                        response = model.create_chat_completion(
+                            messages=history,
+                            temperature=temperature,
+                            max_tokens=max_length,
+                            tools=tools,
+                        )
+                    assistant_message = f"{response['choices'][0]['message']['content']}"
+                    while assistant_message.startswith('{"name":'):
+                        response_content = json.loads(assistant_message)
+                        print("正在调用" + response_content['name'] + "工具")
+                        results = dispatch_tool(response_content['name'], response_content['parameters'])
+                        print(results)
+                        assistant_content = {"role": "function_call", "content": assistant_message}
+                        history.append(assistant_content)    
+                        history.append(
+                            {
+                                "role": "observation",
+                                "content": results,
+                            }
+                        )
                         if extra_parameters is not None and extra_parameters != {}:
                             response = model.create_chat_completion(
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
+                                tools=tools,
                                 **extra_parameters,
                             )
                         else:
@@ -1994,14 +2460,18 @@ class LLM_local:
                                 messages=history,
                                 temperature=temperature,
                                 max_tokens=max_length,
+                                tools=tools,
                             )
-                        response = f"{response['choices'][0]['message']['content']}"
-                        assistant_content = {"role": "assistant", "content": response}
-                        history.append(assistant_content)         
-                elif model_type in ["VLM(testing)"]:
+                        print(response)   
+                        assistant_message = f"{response['choices'][0]['message']['content']}"
+                    assistant_content = {"role": "assistant", "content": assistant_message}
+                    response= assistant_message
+                    history.append(assistant_content)    
+                elif model_type =="VLM(testing)":
                     if image is not None:
-                        pil_image = ToPILImage()(image[0].permute(2, 0, 1))
-                        self.images.append(pil_image)
+                        for img_VLM in image:
+                            pil_image = ToPILImage()(img_VLM.permute(2, 0, 1))
+                            self.images.append(pil_image)
                     if extra_parameters is not None and extra_parameters != {}:
                         response, history = vlm_chat(
                             model,
@@ -2025,7 +2495,7 @@ class LLM_local:
                         tool = match.group(1)
                         parameters = match.group(2)
                         json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
-                        history.append({"role": "assistant", "content": json_str})
+                        history.append({"role": "function_call", "content": json_str})
                         print("正在调用" + tool + "工具")
                         parameters = json.loads("{" + parameters + "}")
                         results = dispatch_tool(tool, parameters)
@@ -2039,6 +2509,7 @@ class LLM_local:
                                 history,
                                 device,
                                 max_length,
+                                role="observation",
                                 temperature=temperature,
                                 **extra_parameters,
                             )
@@ -2060,6 +2531,9 @@ class LLM_local:
                 history_get.extend(history_copy)
                 history_get.extend(history[1:])
                 history = history_get
+                if is_enable_system_role == "disable":
+                    if history[0]["role"] == "user":
+                        history[0]["role"]= "system"
                 with open(self.prompt_path, "w", encoding="utf-8") as f:
                     json.dump(history, f, indent=4, ensure_ascii=False)
                 for his in history:
@@ -2088,7 +2562,11 @@ class LLM_local:
 
                 history = str(historys)
                 global image_buffer
-                image_out = image_buffer
+                if image_buffer != []:
+                    image_out = image_buffer.clone()
+                else:
+                    image_out = None
+                image_buffer = []
                 return (
                     response,
                     history,
@@ -2117,14 +2595,14 @@ NODE_CLASS_MAPPINGS = {
     "LLM": LLM,
     "LLM_local": LLM_local,
     "LLM_api_loader": LLM_api_loader,
-    "genai_api_loader":genai_api_loader,
+    # "genai_api_loader":genai_api_loader,
     "LLM_local_loader": LLM_local_loader,
     "easy_LLM_local_loader": easy_LLM_local_loader,
     "easy_LLM_api_loader":easy_LLM_api_loader,
     "load_ebd":load_ebd,
-    "embeddings_function": embeddings_function,
     "load_file": load_file,
     "load_persona": load_persona,
+    "embeddings_function": embeddings_function,
     "classify_persona": classify_persona,
     "classify_function": classify_function,
     "classify_persona_plus": classify_persona_plus,
@@ -2132,13 +2610,14 @@ NODE_CLASS_MAPPINGS = {
     "tool_combine": tool_combine,
     "tool_combine_plus": tool_combine_plus,
     "time_tool": time_tool,
-    "weather_tool": weather_tool,
     "accuweather_tool": accuweather_tool,
     "google_tool": google_tool,
     "bing_tool": bing_tool,
     "check_web_tool": check_web_tool,
     "file_combine": file_combine,
     "file_combine_plus": file_combine_plus,
+    "string_combine": string_combine,
+    "string_combine_plus": string_combine_plus,
     "start_dialog": start_dialog,
     "end_dialog": end_dialog,
     "interpreter_tool": interpreter_tool,
@@ -2218,6 +2697,11 @@ NODE_CLASS_MAPPINGS = {
     "any2str":any2str,
     "start_anything":start_anything,
     "end_anything":end_anything,
+    "json_writing":json_writing,
+    "load_float":load_float,
+    "load_bool":load_bool,
+    "file_path_iterator":file_path_iterator,
+    "aisuite_loader":aisuite_loader,
 }
 
 
@@ -2228,15 +2712,15 @@ if lang_config=="en_US" or lang_config=="zh_CN":
     lang=lang_config
 if lang == "zh_CN":
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "LLM": "API LLM通用链路",
-        "LLM_local": "本地LLM通用链路",
-        "LLM_api_loader": "API LLM加载器",
-        "easy_LLM_api_loader": "简易API LLM加载器",
-        "genai_api_loader":"Gemini API LLM加载器",
-        "LLM_local_loader": "本地LLM加载器",
-        "easy_LLM_local_loader": "简易本地LLM加载器",
-        "load_ebd": "加载词嵌入",
-        "embeddings_function": "词向量检索",
+        "LLM": "☁️API LLM通用链路",
+        "LLM_local": "🖥️本地LLM通用链路",
+        "LLM_api_loader": "☁️API LLM加载器",
+        "easy_LLM_api_loader": "☁️简易API LLM加载器",
+        # "genai_api_loader":"Gemini API LLM加载器",
+        "LLM_local_loader": "🖥️本地LLM加载器",
+        "easy_LLM_local_loader": "🖥️简易本地LLM加载器",
+        "load_ebd": "🖥️加载词嵌入模型",
+        "embeddings_function": "🖥️词向量检索",
         "load_file": "加载文件",
         "load_persona": "加载人格面具",
         "classify_persona": "分类器面具",
@@ -2246,17 +2730,18 @@ if lang == "zh_CN":
         "tool_combine": "工具组合",
         "tool_combine_plus": "超大工具组合",
         "time_tool": "时间工具",
-        "weather_tool": "天气工具",
         "accuweather_tool": "accuweather工具",
         "google_tool": "谷歌搜索工具",
         "bing_tool": "必应搜索工具",
         "check_web_tool": "检视网页工具",
         "file_combine": "文件组合",
         "file_combine_plus": "超大文件组合",
+        "string_combine": "字符串组合",
+        "string_combine_plus": "超大字符串组合",
         "start_dialog": "开始对话",
         "end_dialog": "结束对话",
-        "interpreter_tool": "解释器工具",
-        "ebd_tool": "词嵌入模型工具",
+        "interpreter_tool": "代码执行工具",
+        "ebd_tool": "🖥️词嵌入模型工具",
         "custom_persona": "自定义面具",
         "start_workflow": "开始工作流",
         "end_workflow": "结束工作流",
@@ -2281,7 +2766,7 @@ if lang == "zh_CN":
         "feishu_tool": "飞书工具",
         "feishu": "发送到飞书",
         "substring": "提取字符串",
-        "openai_tts": "OpenAI语音合成",
+        "openai_tts": "☁️OpenAI语音合成",
         "load_name": "加载config.ini中的模型名称",
         "omost_decode": "omost解码器",
         "omost_setting": "omost设置",
@@ -2311,7 +2796,7 @@ if lang == "zh_CN":
         "list_extend": "列表扩展",
         "list_extend_plus": "超大列表扩展",
         "clear_model": "清空模型",
-        "save_ebd_database": "保存向量数据库",
+        "save_ebd_database": "🖥️保存向量数据库",
         "json2text": "JSON转文本",
         "interpreter_function": "解释器函数",
         "load_img_path": "从图片路径加载",
@@ -2327,23 +2812,28 @@ if lang == "zh_CN":
         "str2float":"字符串转浮点数",
         "json_iterator":"JSON迭代器",
         "Lorebook":"Lorebook传说书",
-        "text_writing":"文本写入",
+        "text_writing":"文件写入",
         "str2int":"字符串转整数",
         "any2str":"任意类型转字符串",
         "start_anything":"开始任意",
         "end_anything": "结束任意",
+        "json_writing": "JSON写入",
+        "load_float": "加载浮点数",
+        "load_bool": "加载布尔值",
+        "file_path_iterator": "文件路径迭代器",
+        "aisuite_loader": "☁️AISuite加载器",
     }
 else:
     NODE_DISPLAY_NAME_MAPPINGS = {
-        "LLM": "API LLM general link",
-        "LLM_local": "Local LLM general link",
-        "LLM_api_loader": "API LLM Loader",
-        "easy_LLM_api_loader": "Easy API LLM Loader",
-        "genai_api_loader":"Gemini API LLM Loader",
-        "LLM_local_loader": "Local LLM Loader",
-        "easy_LLM_local_loader": "Easy Local LLM Loader",
-        "load_ebd": "Load Embeddings",
-        "embeddings_function": "Word Vector Search",
+        "LLM": "☁️API LLM general link",
+        "LLM_local": "🖥️Local LLM general link",
+        "LLM_api_loader": "☁️API LLM Loader",
+        "easy_LLM_api_loader": "☁️Easy API LLM Loader",
+        # "genai_api_loader":"Gemini API LLM Loader",
+        "LLM_local_loader": "🖥️Local LLM Loader",
+        "easy_LLM_local_loader": "🖥️Easy Local LLM Loader",
+        "load_ebd": "🖥️Load Embeddings",
+        "embeddings_function": "🖥️Word Vector Search",
         "load_file": "Load File",
         "load_persona": "Load Persona",
         "classify_persona": "Classify Persona",
@@ -2353,17 +2843,18 @@ else:
         "tool_combine": "Tool Combine",
         "tool_combine_plus": "Large Tool Combine",
         "time_tool": "Time Tool",
-        "weather_tool": "Weather Tool",
         "accuweather_tool": "accuweather Tool",
         "google_tool": "Google Search Tool",
         "bing_tool": "Bing Search Tool",
         "check_web_tool": "Check Web Tool",
         "file_combine": "File Combine",
         "file_combine_plus": "Large File Combine",
+        "string_combine": "String Combine",
+        "string_combine_plus": "Large String Combine",
         "start_dialog": "Start Dialog",
         "end_dialog": "End Dialog",
-        "interpreter_tool": "Interpreter Tool",
-        "ebd_tool": "Embeddings Tool",
+        "interpreter_tool": "Code Execution Tool",
+        "ebd_tool": "🖥️Embeddings Tool",
         "custom_persona": "Custom Persona",
         "start_workflow": "Start Workflow",
         "end_workflow": "End Workflow",
@@ -2388,7 +2879,7 @@ else:
         "feishu_tool": "Feishu Tool",
         "feishu": "Send to Feishu",
         "substring": "Extract Substring",
-        "openai_tts": "OpenAI TTS",
+        "openai_tts": "☁️OpenAI TTS",
         "load_name": "Load Model Name in config.ini",
         "omost_decode": "omost Decoder",
         "omost_setting": "omost Setting",
@@ -2418,7 +2909,7 @@ else:
         "list_extend": "List Extend",
         "list_extend_plus": "Large List Extend",
         "clear_model": "Clear Model",
-        "save_ebd_database": "Save Embeddings Database",
+        "save_ebd_database": "🖥️Save Embeddings Database",
         "json2text": "JSON to Text",
         "interpreter_function": "Interpreter Function",
         "load_img_path": "Load Image from Path",
@@ -2434,11 +2925,16 @@ else:
         "str2float": "String to Float",
         "json_iterator": "JSON Iterator",
         "Lorebook":"Lore book",
-        "text_writing":"Text write",
+        "text_writing":"File write",
         "str2int": "String to Integer",
         "any2str": "Any to String",
         "start_anything": "Start Anything",
         "end_anything": "End Anything",
+        "json_writing": "JSON Writing",
+        "load_float": "Load Float",
+        "load_bool": "Load Boolean",
+        "file_path_iterator":"File Path Iterator",
+        "aisuite_loader":"☁️Aisuite Loader"
     }
 
 
@@ -2486,7 +2982,7 @@ def load_custom_tools():
 
         except Exception as e:
             # 处理导入错误（例如，跳过文件）
-            print(f"导入 {name} 时出错：{e}")
+            print(f"Optional node {name} import failed with error: {e}.If you don't need to use this optional node, this reminder can be ignored.")
 
 
 # 调用函数来加载 custom_tool 文件夹下的模块
