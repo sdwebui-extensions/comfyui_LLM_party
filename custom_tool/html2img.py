@@ -7,13 +7,13 @@ import torch
 current_dir_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 在current_dir_path下创建一个名为output的文件夹
 output_dir_path = os.path.join(current_dir_path, 'output')
+import imgkit
 
 def html2img(html_str, width=800, height=600):
-    hti = Html2Image(custom_flags=['--no-sandbox'])
-    hti.output_path = output_dir_path
-    hti.screenshot(html_str=html_str, save_as='example.png', size=(width, height))
-    image_path = os.path.join(hti.output_path, 'example.png')
-    return image_path
+    with open('tmp.html', 'w') as f:
+        f.write(html_str)
+    imgkit.from_file('test.html', f'{output_dir_path}/out.png')
+    return f'{output_dir_path}/out.png'
 
 class html2img_function:
     @classmethod
