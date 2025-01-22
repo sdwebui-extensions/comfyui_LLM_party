@@ -10,9 +10,9 @@ output_dir_path = os.path.join(current_dir_path, 'output')
 import imgkit
 
 def html2img(html_str, width=800, height=600):
-    with open('tmp.html', 'w') as f:
+    with open(f'{output_dir_path}/tmp.html', 'w') as f:
         f.write(html_str)
-    imgkit.from_file('test.html', f'{output_dir_path}/out.png')
+    imgkit.from_file(f'{output_dir_path}/test.html', f'{output_dir_path}/out.png')
     return f'{output_dir_path}/out.png'
 
 class html2img_function:
