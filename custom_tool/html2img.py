@@ -12,7 +12,7 @@ import imgkit
 def html2img(html_str, width=800, height=600):
     with open(f'{output_dir_path}/tmp.html', 'w') as f:
         f.write(html_str)
-    imgkit.from_file(f'{output_dir_path}/test.html', f'{output_dir_path}/out.png')
+    imgkit.from_file(f'{output_dir_path}/tmp.html', f'{output_dir_path}/out.png', options={'enable-local-file-access': "", 'width':width, 'height':height})
     return f'{output_dir_path}/out.png'
 
 class html2img_function:
