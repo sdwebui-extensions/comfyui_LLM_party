@@ -224,6 +224,7 @@ def another_llm(id, type, question):
             is_enable,
             extra_parameters,
             user_history,
+            img_URL,
         ) = llm.list
         res, _, _, _ = llm.chatbot(
             question,
@@ -246,6 +247,7 @@ def another_llm(id, type, question):
             is_enable,
             extra_parameters,
             user_history,
+            img_URL,
         )
     elif type == "local":
         try:
@@ -515,11 +517,11 @@ class Chat:
         is_tools_in_sys_prompt="disable",
         images=None,
         imgbb_api_key="",
+        img_URL=None,
         **extra_parameters,
     ):
         try:
-            is_azure=False
-            if images is not None:
+            if images is not None and (img_URL is None or img_URL == ""):
                 if imgbb_api_key == "" or imgbb_api_key is None:
                     imgbb_api_key = api_keys.get("imgbb_api")
                 if imgbb_api_key == "" or imgbb_api_key is None:
@@ -556,7 +558,8 @@ class Chat:
                         else:
                             return "Error: " + response.text
                     user_prompt = img_json
-
+            elif img_URL is not None and img_URL != "":
+                user_prompt = [{"type": "text", "text": user_prompt}, {"type": "image_url", "image_url": {"url": img_URL}}]
             # 将history中的系统提示词部分如果为空，就剔除
             for i in range(len(history)):
                 if history[i]["role"] == "system" and history[i]["content"] == "":
@@ -1406,6 +1409,7 @@ class LLM:
                 "is_enable": ("BOOLEAN", {"default": True, "tooltip": "Whether to enable the LLM."}),
                 "extra_parameters": ("DICT", {"forceInput": True, "tooltip": "Extra parameters for the LLM."}),
                 "user_history": ("STRING", {"forceInput": True, "tooltip": "User history, you can directly input a JSON string containing multiple rounds of dialogue here."}),
+                "img_URL": ("STRING", {"forceInput": True, "tooltip": "The URL of the image."}),
             },
         }
 
@@ -1456,6 +1460,7 @@ class LLM:
         is_enable=True,
         extra_parameters=None,
         user_history=None,
+        img_URL=None,
     ):
         if not is_enable:
             return (
@@ -1484,6 +1489,7 @@ class LLM:
             is_enable,
             extra_parameters,
             user_history,
+            img_URL,
         ]
         if user_prompt is None:
             user_prompt = user_prompt_input
@@ -1643,11 +1649,11 @@ class LLM:
                             message["content"] += "\n以下是可以参考的已知信息:\n" + file_content
                 if extra_parameters is not None and extra_parameters != {}:
                     response, history = model.send(
-                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key, **extra_parameters
+                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key,img_URL, **extra_parameters
                     )
                 else:
                     response, history = model.send(
-                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key
+                        user_prompt, temperature, max_length, history, tools, is_tools_in_sys_prompt,images,imgbb_api_key,img_URL,
                     )
                 print(response)
                 # 修改prompt.json文件
