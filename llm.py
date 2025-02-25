@@ -500,12 +500,25 @@ class genChat:
             return str(e), history
         return text, history
 """
-
+def ensure_version_suffix(base_url):
+    """
+    确保 base_url 以 '/v<n>/' 结尾，其中 n 是数字。
+    如果不是这样，则添加 '/v1/' 到末尾。
+    """
+    # 正则表达式匹配 '/v<n>/' 其中 <n> 是数字
+    match = re.search(r'/v(\d+)/$', base_url)
+    
+    if not match:
+        # 如果没有匹配到，则添加 '/v1/'
+        if not base_url.endswith('/'):
+            base_url += '/'
+        base_url += 'v1/'
+    return base_url
 class Chat:
     def __init__(self, model_name, apikey, baseurl) -> None:
         self.model_name = model_name
         self.apikey = apikey
-        self.baseurl = baseurl
+        self.baseurl = ensure_version_suffix(baseurl)
 
     def send(
         self,
@@ -853,7 +866,7 @@ class aisuite_Chat:
         elif provider == "azure":
             self.provider_configs["azure"] ={
                     "api_key": apikey,
-                    "base_url": baseurl if baseurl != "" else "https://openai.azure.com/"
+                    "base_url": baseurl if baseurl != "" else "https://openai.azure.com/v1"
                 }
         elif provider == "aws":
             os.environ['AWS_ACCESS_KEY'] = aws_access_key_id
@@ -1296,53 +1309,7 @@ class easy_LLM_api_loader:
                 openai.base_url = openai.base_url + "/"
         chat = Chat(model_name, openai.api_key, openai.base_url)
         return (chat,)
-"""
-class genai_api_loader:
-    def __init__(self):
-        pass
 
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model_name": ("STRING", {"default": "gemini-1.5-flash-latest"}),
-            },
-            "optional": {
-                "api_key": (
-                    "STRING",
-                    {
-                        "default": "",
-                    },
-                ),
-            },
-        }
-
-    RETURN_TYPES = ("CUSTOM",)
-    RETURN_NAMES = ("model",)
-
-    FUNCTION = "chatbot"
-
-    # OUTPUT_NODE = False
-
-    CATEGORY = "大模型派对（llm_party）/模型加载器（model loader）"
-
-    def chatbot(self, model_name, api_key=None):
-        api_keys = load_api_keys(config_path)
-        if api_key != "":
-            api_key = api_key
-        elif model_name in config_key:
-            api_keys = config_key[model_name]
-            api_key = api_keys.get("api_key")
-        elif api_keys.get("openai_api_key") != "":
-            api_key = api_keys.get("openai_api_key")
-        if api_key == "":
-            api_keys = load_api_keys(config_path)
-            openai.api_key = api_keys.get("openai_api_key")
-            openai.base_url = api_keys.get("base_url")
-
-        chat = genChat(model_name, api_key)
-        return (chat,)
-"""
 class LLM:
     def __init__(self):
         current_time = datetime.datetime.now()
@@ -1732,7 +1699,7 @@ def llm_chat(
     history.append({"role": "assistant", "content": response})
     return response, history
 
-def vlm_chat(
+def llama_chat(
     model, processor, image, user_prompt, history, device, max_length, role="user", temperature=0.7, **extra_parameters
 ):
     if image !=[]:
@@ -1770,7 +1737,152 @@ def vlm_chat(
     
     return assistant_output, history
 
+def qwen_chat(
+    model, processor, image, user_prompt, history, device, max_length, role="user", temperature=0.7, **extra_parameters
+):
+    if image !=[]:
+        image_content = []
+        for i in image:
+            image_content.append(
+                {
+                    "type": "image",
+                    "image": i,  
+                }
+            )
+        image_content.append({"type": "text", "text": user_prompt})
+        user_content = [
+            {
+                "role": "user",
+                "content": image_content,
+            }
+        ]
+        history.extend(user_content)
+    else:
+        user_content = [{
+            "role": role,
+            "content": [
+                {"type": "text", "text": user_prompt},
+            ],
+        }]
+        history.extend(user_content)
+    # 准备推理输入
+    text = processor.apply_chat_template(
+        history, tokenize=False, add_generation_prompt=True
+    )
+    from qwen_vl_utils import process_vision_info
+    image_inputs, video_inputs = process_vision_info(history)
+    inputs = processor(
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt",
+    )
+    inputs = inputs.to(device)
+    
+    # 移除历史中的图片
+    for i in range(len(history)-1, -1, -1):
+        if history[i].get("role") == "user":
+            for content in history[i]["content"]:
+                if content.get("type") == "image":
+                    history.pop(i)
+                    history.append({"role": "user", "content": [{"type": "text", "text": user_prompt}]})
+                    break
 
+    # 生成输出
+    with torch.no_grad():
+        generated_ids = model.generate(**inputs, max_new_tokens=max_length, temperature=temperature, **extra_parameters)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = processor.batch_decode(
+            generated_ids_trimmed, 
+            skip_special_tokens=True, 
+            clean_up_tokenization_spaces=False
+        )
+    response = output_text[0]
+    # 使用正则表达式提取最后一个助手的回答
+    matches = re.findall(r'assistant\s*(.*?)(?=\s*(?:system|user|$))', response, re.DOTALL)
+    if matches:
+        assistant_output = matches[-1].strip()
+    else:
+        assistant_output = response.strip()
+    history.append({"role": "assistant", "content":assistant_output})
+    
+    return assistant_output, history
+
+def convert_pil_images_to_base64(pil_images):
+    base64_images = []
+    for pil_img in pil_images:
+        # 确保图像格式为PNG或其他你想要转换的格式
+        buffer = io.BytesIO()
+        pil_img.save(buffer, format="PNG")
+        buffer.seek(0)  # 移动到字节流的开始
+        
+        # 将字节流转换为Base64字符串
+        img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        # 构造data URL scheme格式（可选）
+        img_base64 = f"data:image/png;base64,{img_str}"
+        base64_images.append(img_base64)
+    
+    return base64_images
+
+def ds_chat(
+    model, processor, image, user_prompt, history, device, max_length, role="<|User|>", temperature=0.7, **extra_parameters
+):
+    tokenizer = processor.tokenizer
+    if image !=[]:
+        base64_images = convert_pil_images_to_base64(image)
+        user_content = [
+            {
+                "role": "<|User|>",
+                "content": f"<image_placeholder>\n{user_prompt}",
+                "images": base64_images,
+            },
+            {"role": "<|Assistant|>", "content": ""},
+        ]
+    else:
+        user_content = [
+            {
+                "role": "<|User|>",
+                "content": f"{user_prompt}",
+            },
+            {"role": "<|Assistant|>", "content": ""},
+        ]
+    try :
+        from janus.utils.io import load_pil_images
+        # specify the path to the model
+        # load images and prepare for inputs
+        pil_images = load_pil_images(user_content)
+        prepare_inputs = processor(
+            conversations=user_content, images=pil_images, force_batchify=True
+        ).to(device)
+
+        # # run image encoder to get the image embeddings
+        inputs_embeds = model.prepare_inputs_embeds(**prepare_inputs)
+        # # run the model to get the response
+        outputs = model.language_model.generate(
+            inputs_embeds=inputs_embeds,
+            attention_mask=prepare_inputs.attention_mask,
+            pad_token_id=tokenizer.eos_token_id,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            max_new_tokens=max_length, 
+            temperature=temperature,
+            do_sample=False,
+            use_cache=True,
+            **extra_parameters,
+        )
+
+        answer = tokenizer.decode(outputs[0].cpu().tolist(), skip_special_tokens=True)
+        clean_pattern = r'<\|.*?\|>'
+        clean_answer = re.sub(clean_pattern, '', answer).strip()
+        history.append({"role": "assistant", "content":clean_answer})
+    except Exception as e:
+        print(e)
+    
+    return clean_answer, history
 
 class LLM_local_loader:
     def __init__(self):
@@ -1795,9 +1907,9 @@ class LLM_local_loader:
                     },
                 ),
                 "dtype": (
-                    ["float32", "float16","bfloat16", "int8", "int4"],
+                    ["auto","float32", "float16","bfloat16", "int8", "int4"],
                     {
-                        "default": "float32",
+                        "default": "auto",
                         "tooltip": "The data type to use for the model. If 'float32', it will use 'float32', otherwise 'float16', 'bfloat16', 'int8', 'int4'.",
                     },
                 ),
@@ -1912,9 +2024,9 @@ class easy_LLM_local_loader:
                     },
                 ),
                 "dtype": (
-                    ["float32", "float16","bfloat16", "int8", "int4"],
+                    ["auto","float32", "float16","bfloat16", "int8", "int4"],
                     {
-                        "default": "float32",
+                        "default": "auto",
                         "tooltip": "The data type to use for the model. If 'float32', it will use 'float32', otherwise 'float16', 'bfloat16', 'int8', 'int4'.",
                     },
                 ),
@@ -2049,7 +2161,7 @@ class LLM_local:
                     },
                 ),
                 "model_type": (
-                    ["LLM","LLM-GGUF", "VLM-GGUF", "VLM(testing)"],
+                    ["LLM","LLM-GGUF", "VLM-GGUF", "VLM(llama-v)", "VLM(qwen-vl)","VLM(deepseek-janus-pro)"],
                     {
                         "default": "LLM",
                         "tooltip": "The type of model to use for the LLM. LLM: Language Model, VLM: Vision Language Model, GGUF: Generalized GPT-4 Unified Framework",
@@ -2473,13 +2585,13 @@ class LLM_local:
                     assistant_content = {"role": "assistant", "content": assistant_message}
                     response= assistant_message
                     history.append(assistant_content)    
-                elif model_type =="VLM(testing)":
+                elif model_type =="VLM(llama-v)":
                     if image is not None:
                         for img_VLM in image:
                             pil_image = ToPILImage()(img_VLM.permute(2, 0, 1))
                             self.images.append(pil_image)
                     if extra_parameters is not None and extra_parameters != {}:
-                        response, history = vlm_chat(
+                        response, history = llama_chat(
                             model,
                             tokenizer,
                             self.images,
@@ -2491,7 +2603,7 @@ class LLM_local:
                             **extra_parameters,
                         )
                     else:
-                        response, history = vlm_chat(
+                        response, history = llama_chat(
                             model, tokenizer, self.images, user_prompt, history, device, max_length, temperature=temperature
                         )
                     # 正则表达式匹配
@@ -2507,7 +2619,7 @@ class LLM_local:
                         results = dispatch_tool(tool, parameters)
                         print(results)
                         if extra_parameters is not None and extra_parameters != {}:
-                            response, history = vlm_chat(
+                            response, history = llama_chat(
                                 model,
                                 tokenizer,
                                 self.images, # image,
@@ -2520,7 +2632,7 @@ class LLM_local:
                                 **extra_parameters,
                             )
                         else:
-                            response, history = vlm_chat(
+                            response, history = llama_chat(
                                 model,
                                 tokenizer,
                                 self.images, # image,
@@ -2530,7 +2642,123 @@ class LLM_local:
                                 max_length,
                                 role="observation",
                                 temperature=temperature,
-                            )         
+                            )
+                elif model_type =="VLM(qwen-vl)":     
+                    if image is not None:
+                        for img_VLM in image:
+                            pil_image = ToPILImage()(img_VLM.permute(2, 0, 1))
+                            self.images.append(pil_image)
+                    if extra_parameters is not None and extra_parameters != {}:
+                        response, history = qwen_chat(
+                            model,
+                            tokenizer,
+                            self.images,
+                            user_prompt,
+                            history,
+                            device,
+                            max_length,
+                            temperature=temperature,
+                            **extra_parameters,
+                        )
+                    else:
+                        response, history = qwen_chat(
+                            model, tokenizer, self.images, user_prompt, history, device, max_length, temperature=temperature
+                        )
+                    # 正则表达式匹配
+                    pattern = r'\{\s*"tool":\s*"(.*?)",\s*"parameters":\s*\{(.*?)\}\s*\}'
+                    while re.search(pattern, response, re.DOTALL) != None:
+                        match = re.search(pattern, response, re.DOTALL)
+                        tool = match.group(1)
+                        parameters = match.group(2)
+                        json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
+                        history.append({"role": "function_call", "content": json_str})
+                        print("正在调用" + tool + "工具")
+                        parameters = json.loads("{" + parameters + "}")
+                        results = dispatch_tool(tool, parameters)
+                        print(results)
+                        if extra_parameters is not None and extra_parameters != {}:
+                            response, history = qwen_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                role="observation",
+                                temperature=temperature,
+                                **extra_parameters,
+                            )
+                        else:
+                            response, history = qwen_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                role="observation",
+                                temperature=temperature,
+                            )    
+                elif model_type =="VLM(deepseek-janus-pro)":
+                    if image is not None:
+                        for img_VLM in image:
+                            pil_image = ToPILImage()(img_VLM.permute(2, 0, 1))
+                            self.images.append(pil_image)
+                    if extra_parameters is not None and extra_parameters != {}:
+                        response, history = ds_chat(
+                            model,
+                            tokenizer,
+                            self.images,
+                            user_prompt,
+                            history,
+                            device,
+                            max_length,
+                            temperature=temperature,
+                            **extra_parameters,
+                        )
+                    else:
+                        response, history = ds_chat(
+                            model, tokenizer, self.images, user_prompt, history, device, max_length, temperature=temperature
+                        )
+                    # 正则表达式匹配
+                    pattern = r'\{\s*"tool":\s*"(.*?)",\s*"parameters":\s*\{(.*?)\}\s*\}'
+                    while re.search(pattern, response, re.DOTALL) != None:
+                        match = re.search(pattern, response, re.DOTALL)
+                        tool = match.group(1)
+                        parameters = match.group(2)
+                        json_str = '{"tool": "' + tool + '", "parameters": {' + parameters + "}}"
+                        history.append({"role": "function_call", "content": json_str})
+                        print("正在调用" + tool + "工具")
+                        parameters = json.loads("{" + parameters + "}")
+                        results = dispatch_tool(tool, parameters)
+                        print(results)
+                        if extra_parameters is not None and extra_parameters != {}:
+                            response, history = ds_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                role="observation",
+                                temperature=temperature,
+                                **extra_parameters,
+                            )
+                        else:
+                            response, history = ds_chat(
+                                model,
+                                tokenizer,
+                                self.images, # image,
+                                results,
+                                history,
+                                device,
+                                max_length,
+                                role="observation",
+                                temperature=temperature,
+                            )    
                 print(response)
                 # 修改prompt.json文件
                 history_get = [history[0]]

@@ -43,7 +43,7 @@ ComfyUI LLM Party permite desde la llamada a múltiples herramientas LLM desde l
   - Gestiona LLM local con ollama: [start_with_Ollama](workflow/ollama.json)
   - Usa LLM local en formato distribuido: [start_with_LLM_local](workflow/start_with_LLM_local.json)
   - Usa LLM local en formato GGUF: [start_with_LLM_GGUF](workflow/start_with_GGUF.json)
-  - Usa VLM local en formato distribuido: [start_with_VLM_local](workflow/start_with_VLM_local.json) (en prueba, actualmente solo admite [Llama-3.2-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct))
+  - Usa VLM local en formato distribuido: [start_with_VLM_local](workflow/start_with_VLM_local.json) Actualmente se admite [Llama-3.2-Vision](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)/[Qwen/Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)/[deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B)
   - Usa VLM local en formato GGUF: [start_with_VLM_GGUF](workflow/start_with_llava.json)
 2. Si estás usando la API, completa tu `base_url` (puede ser una API de retransmisión, asegúrate de que termine con `/v1/`) y `api_key` en el nodo de carga de API LLM. Ejemplo: `https://api.openai.com/v1/`
 3. Si estás usando ollama, activa la opción `is_ollama` en el nodo de carga de API LLM, no es necesario completar `base_url` y `api_key`.
@@ -51,6 +51,8 @@ ComfyUI LLM Party permite desde la llamada a múltiples herramientas LLM desde l
 5. Debido al alto umbral de uso de este proyecto, incluso si eliges el inicio rápido, espero que puedas leer pacientemente la página principal del proyecto.
 
 ## Últimas Actualizaciones
+1. El nodo cargador local de VLM ya admite [deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B), flujo de trabajo de ejemplo: [Janus-Pro](workflow/deepseek-janus-pro.json)  
+1. El nodo de cargador local VLM ya es compatible con [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct), sin embargo, es necesario que actualices el transformador a la versión de GitHub (```pip install git+https://github.com/huggingface/transformers```), ejemplo de flujo de trabajo: [qwen-vl](workflow/qwen-vl.json)  
 1. Se ha añadido un nuevo nodo de alojamiento de imágenes, que actualmente admite el alojamiento de imágenes de https://sm.ms (el dominio en la región de China es https://smms.app) y https://imgbb.com. En el futuro, se admitirán más alojamientos de imágenes. Ejemplo de flujo de trabajo: [Alojamiento de imágenes](workflow/图床.json)  
 1. ~~El servicio de alojamiento de imágenes imgbb, que es compatible de manera predeterminada con party, se ha actualizado al dominio [imgbb](https://imgbb.io). El alojamiento anterior no era amigable para los usuarios de China continental, por lo que se ha cambiado.~~ Lamento informar que el servicio API de alojamiento de imágenes en https://imgbb.io parece haber sido descontinuado, por lo que el código ha vuelto a la original https://imgbb.com. Agradezco su comprensión. En el futuro, actualizaré un nodo que soporte más servicios de alojamiento de imágenes. 
 1. Se ha actualizado la herramienta [MCP](https://modelcontextprotocol.io/introduction), puedes modificar la configuración en el archivo '[mcp_config.json](mcp_config.json)' en la carpeta del proyecto party para ajustar el servidor MCP al que deseas conectarte. Puedes encontrar varios parámetros de configuración de servidores MCP que deseas agregar aquí: [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers). La configuración predeterminada de este proyecto es el servidor Everything, un servidor destinado a probar si el servidor MCP funciona correctamente. Flujo de trabajo de referencia: [start_with_MCP](workflow/start_with_MCP.json). Nota para desarrolladores: el nodo de la herramienta MCP puede conectarse al servidor MCP configurado y luego convertir las herramientas del servidor en herramientas que el LLM pueda utilizar directamente. Al configurar diferentes servidores locales o en la nube, puedes experimentar todas las herramientas LLM disponibles en el mundo.
@@ -99,6 +101,8 @@ ComfyUI LLM Party permite desde la llamada a múltiples herramientas LLM desde l
 * [openbmb/MiniCPM-V-2_6-gguf](https://huggingface.co/openbmb/MiniCPM-V-2_6-gguf/tree/main)
 * [lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/tree/main)
 * [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
+* [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
+* [deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B)
 
 4. Descarga del modelo:
 * [Dirección de nube Quark](https://pan.quark.cn/s/190b41f3bbdb)
@@ -183,7 +187,7 @@ Si hay problemas con el complemento o si tiene alguna otra pregunta, le damos la
 3. Discord: [enlace de discord](https://discord.gg/f2dsAKKr2V)
 
 ### Síguenos
-1. Si desea mantenerse informado sobre las últimas funciones de este proyecto, le invitamos a seguir nuestra cuenta de Bilibili: [主持BB机](https://space.bilibili.com/26978344)
+1. Si desea mantenerse informado sobre las últimas funciones de este proyecto, le invitamos a seguir nuestra cuenta de Bilibili: [派酱](https://space.bilibili.com/26978344)
 2. [youtube@comfyui-LLM-party](https://www.youtube.com/@comfyui-LLM-party)
 
 ### Apoyo a donaciones

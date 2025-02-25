@@ -43,7 +43,7 @@ ComfyUI LLM Party는 가장 기본적인 LLM 다중 도구 호출, 역할 설정
   - ollama를 사용하여 로컬 LLM 관리: [start_with_Ollama](workflow/ollama.json)
   - 분산 형식의 로컬 LLM 사용: [start_with_LLM_local](workflow/start_with_LLM_local.json)
   - GGUF 형식의 로컬 LLM 사용: [start_with_LLM_GGUF](workflow/start_with_GGUF.json)
-  - 분산 형식의 로컬 VLM 사용: [start_with_VLM_local](workflow/start_with_VLM_local.json) (테스트 중, 현재는 [Llama-3.2-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)만 지원)
+  - 분산 형식의 로컬 VLM 사용: [start_with_VLM_local](workflow/start_with_VLM_local.json) (현재는 [Llama-3.2-Vision](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)/[Qwen/Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)/[deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B)을 지원하고 있습니다.)
   - GGUF 형식의 로컬 VLM 사용: [start_with_VLM_GGUF](workflow/start_with_llava.json)
 2. API를 사용하는 경우, API LLM 로더 노드에 `base_url`(릴레이 API일 수 있으며, 끝이 `/v1/`로 끝나는지 확인)과 `api_key`를 입력합니다. 예: `https://api.openai.com/v1/`
 3. ollama를 사용하는 경우, API LLM 로더 노드에서 `is_ollama` 옵션을 켜고 `base_url` 및 `api_key`를 입력할 필요가 없습니다.
@@ -51,6 +51,8 @@ ComfyUI LLM Party는 가장 기본적인 LLM 다중 도구 호출, 역할 설정
 5. 이 프로젝트는 사용 임계값이 높기 때문에 빠른 시작을 선택하더라도 프로젝트 홈페이지를 꼼꼼히 읽어주시기 바랍니다.
 
 ## 최신 업데이트
+1. VLM 로컬 로드 노드는 이미 [deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B)를 지원하고 있습니다. 예제 워크플로우: [Janus-Pro](workflow/deepseek-janus-pro.json)
+1. VLM 로컬 로더 노드는 이미 [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)를 지원하지만, transformer를 github 버전으로 업데이트할 필요가 있습니다（```pip install git+https://github.com/huggingface/transformers```）。예시 워크플로우：[qwen-vl](workflow/qwen-vl.json)
 1. 새로운 이미지 호스팅 노드가 추가되었습니다. 현재 https://sm.ms 이미지 호스팅(중국 도메인은 https://smms.app)과 https://imgbb.com 이미지 호스팅을 지원하고 있습니다. 앞으로 더 많은 이미지 호스팅이 지원될 예정입니다. 예시 작업 흐름: [이미지 호스팅](workflow/图床.json)
 1. ~~party 기본 호환 imgBB 이미지 호스팅이 [imgbb](https://imgbb.io) 이 도메인으로 업데이트되었습니다. 이전의 이미지 호스팅은 중국 본토 사용자에게 불편함이 있었기 때문에 변경되었습니다.~~ 대단히 죄송하지만,  https://imgbb.io 의 이미지 호스팅 API 서비스가 중단된 것 같습니다. 그래서 코드는 원래의 https://imgbb.com 으로 롤백되었습니다. 여러분의 이해에 감사드립니다. 앞으로 더 많은 이미지 호스팅을 지원하는 노드를 업데이트할 예정입니다.
 1. [MCP](https://modelcontextprotocol.io/introduction) 도구가 업데이트되었습니다. party 프로젝트 폴더 아래의 '[mcp_config.json](mcp_config.json)' 파일에서 설정을 수정하여 연결하려는 MCP 서버를 조정할 수 있습니다. 추가하고자 하는 다양한 MCP 서버 구성 매개변수는 여기에서 확인할 수 있습니다: [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers). 본 프로젝트의 기본 구성은 Everything 서버로, MCP 서버가 정상적으로 작동하는지 테스트하는 데 사용됩니다. 워크플로우 참조: [start_with_MCP](workflow/start_with_MCP.json). 개발자 주의사항: MCP 도구 노드는 구성된 MCP 서버에 연결할 수 있으며, 그 후 서버 내의 도구를 LLM이 직접 사용할 수 있는 도구로 변환합니다. 다양한 로컬 서버 또는 클라우드 서버를 구성함으로써 전 세계의 모든 LLM 도구를 체험할 수 있습니다.
@@ -100,6 +102,8 @@ ComfyUI LLM Party는 가장 기본적인 LLM 다중 도구 호출, 역할 설정
 * [openbmb/MiniCPM-V-2_6-gguf](https://huggingface.co/openbmb/MiniCPM-V-2_6-gguf/tree/main)
 * [lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/tree/main)
 * [meta-llama/Llama-3.2-11B-Vision-Instruct](https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct)
+* [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct)
+* [deepseek-ai/Janus-Pro](https://huggingface.co/deepseek-ai/Janus-Pro-1B)
 
 4. 모델 다운로드:
 * [Quark 클라우드 주소](https://pan.quark.cn/s/190b41f3bbdb)
@@ -184,7 +188,7 @@ ComfyUI LLM Party는 가장 기본적인 LLM 다중 도구 호출, 역할 설정
 3. 디스코드:[discord 링크](https://discord.gg/f2dsAKKr2V)
 
 ### 저희를 팔로우하세요
-1. 본 프로젝트의 최신 기능을 지속적으로 관심 가져주시길 원하신다면, B站 계정에 팔로우해 주세요：[파티 호스트 BB기](https://space.bilibili.com/26978344)
+1. 본 프로젝트의 최신 기능을 지속적으로 관심 가져주시길 원하신다면, B站 계정에 팔로우해 주세요：[派酱](https://space.bilibili.com/26978344)
 2. [youtube@comfyui-LLM-party](https://www.youtube.com/@comfyui-LLM-party)
 
 ### 기부 지원
